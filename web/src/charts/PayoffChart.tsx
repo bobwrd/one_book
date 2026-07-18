@@ -105,7 +105,7 @@ export function PayoffChart({
               x2={width - PAD.right}
               y1={tick.y}
               y2={tick.y}
-              stroke="var(--border)"
+              stroke="var(--chart-grid)"
               strokeWidth="1"
             />
             <text
@@ -113,7 +113,7 @@ export function PayoffChart({
               y={tick.y + 3}
               textAnchor="end"
               fontSize="9"
-              fill="var(--text-faint)"
+              fill="var(--ink-faint)"
               fontFamily="var(--mono)"
             >
               {formatUsd(tick.value, 0)}
@@ -127,7 +127,7 @@ export function PayoffChart({
           x2={width - PAD.right}
           y1={zeroY}
           y2={zeroY}
-          stroke="var(--border-strong)"
+          stroke="var(--border)"
           strokeWidth="1"
           strokeDasharray="3 3"
         />
@@ -139,7 +139,7 @@ export function PayoffChart({
             y={height - 8}
             textAnchor="middle"
             fontSize="9"
-            fill="var(--text-faint)"
+            fill="var(--ink-faint)"
             fontFamily="var(--mono)"
           >
             {tick.value.toFixed(0)}
@@ -149,7 +149,7 @@ export function PayoffChart({
         {/* Shade above and below zero, clipped to the curve. */}
         <defs>
           <linearGradient id="gainFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--gain)" stopOpacity="0.18" />
+            <stop offset="0%" stopColor="var(--gain)" stopOpacity="0.16" />
             <stop offset="100%" stopColor="var(--gain)" stopOpacity="0" />
           </linearGradient>
         </defs>
@@ -161,7 +161,7 @@ export function PayoffChart({
           />
         )}
 
-        <path d={fullPath} fill="none" stroke="var(--accent)" strokeWidth="1.8" />
+        <path d={fullPath} fill="none" stroke="var(--chart-line)" strokeWidth="1.8" />
 
         {breakevens.map((price, i) => (
           <g key={i}>
@@ -170,7 +170,7 @@ export function PayoffChart({
               x2={x(price)}
               y1={PAD.top}
               y2={height - PAD.bottom}
-              stroke="var(--text-faint)"
+              stroke="var(--ink-faint)"
               strokeWidth="1"
               strokeDasharray="2 4"
             />
@@ -179,7 +179,7 @@ export function PayoffChart({
               y={PAD.top - 3}
               textAnchor="middle"
               fontSize="9"
-              fill="var(--text-faint)"
+              fill="var(--ink-faint)"
               fontFamily="var(--mono)"
             >
               BE {price.toFixed(0)}

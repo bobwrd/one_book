@@ -10,7 +10,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { App } from "../src/App.js";
 
 function addStock(ticker: string, shares: string) {
-  fireEvent.click(screen.getByText("+ Add position"));
+  fireEvent.click(screen.getByText("Add position"));
   fireEvent.change(screen.getByLabelText("Ticker"), {
     target: { value: ticker },
   });
@@ -27,7 +27,7 @@ function addOption(opts: {
   strike: string;
   expiry: string;
 }) {
-  fireEvent.click(screen.getByText("+ Add position"));
+  fireEvent.click(screen.getByText("Add position"));
   fireEvent.click(screen.getByText("Option"));
   fireEvent.change(screen.getByLabelText("Underlying"), {
     target: { value: opts.ticker },
@@ -70,10 +70,14 @@ function tileValue(label: string): string {
   return value?.textContent ?? "";
 }
 
-/** Tickers appear in both the rail and the exposure table, so scope to the rail. */
+/**
+ * Tickers appear in both the rail and the exposure table, so scope to the
+ * rail. The symbol node also holds the quantity, so read just the leading
+ * text node.
+ */
 function railTickers(): string[] {
-  return [...document.querySelectorAll(".position-ticker")].map(
-    (node) => node.textContent ?? "",
+  return [...document.querySelectorAll(".position-sym")].map(
+    (node) => node.childNodes[0]?.textContent?.trim() ?? "",
   );
 }
 
@@ -109,7 +113,7 @@ describe("OneBook dashboard", () => {
     addStock("AAPL", "100");
 
     expect(railTickers()).toEqual(["AAPL"]);
-    expect(screen.getByText("1 position · 1 underlying")).toBeTruthy();
+    expect(screen.getByText("1 pos · 1 sym")).toBeTruthy();
     // Stock delta-equivalent is its own share count.
     expect(tileValue("Net delta")).toBe("100.0");
   });
@@ -125,7 +129,7 @@ describe("OneBook dashboard", () => {
       expiry: futureExpiry(),
     });
 
-    expect(screen.getByText("2 positions · 1 underlying")).toBeTruthy();
+    expect(screen.getByText("2 pos · 1 sym")).toBeTruthy();
   });
 
   it("nets a covered call down against its stock — the core insight", () => {
@@ -161,7 +165,7 @@ describe("OneBook dashboard", () => {
     const before = {
       pnl: tileValue("Scenario P&L"),
       delta: Number(tileValue("Net delta")),
-      var95: parseUsd(tileValue("VaR 95% · 1d")),
+      var95: parseUsd(tileValue("VaR 95 · 1d")),
     };
 
     fireEvent.change(
@@ -172,7 +176,7 @@ describe("OneBook dashboard", () => {
     const after = {
       pnl: tileValue("Scenario P&L"),
       delta: Number(tileValue("Net delta")),
-      var95: parseUsd(tileValue("VaR 95% · 1d")),
+      var95: parseUsd(tileValue("VaR 95 · 1d")),
     };
 
     // This is the flagship interaction: one slider, every metric responds.
@@ -241,7 +245,7 @@ describe("OneBook dashboard", () => {
     );
     expect(parseUsd(tileValue("Scenario P&L"))).not.toBe(0);
 
-    fireEvent.click(screen.getByText("Reset to spot"));
+    fireEvent.click(screen.getByText("Reset"));
     expect(parseUsd(tileValue("Scenario P&L"))).toBe(0);
   });
 
@@ -249,10 +253,10 @@ describe("OneBook dashboard", () => {
     render(<App />);
     addStock("AAPL", "100");
 
-    const rows = document.querySelectorAll(".position-delta-eq");
+    const rows = document.querySelectorAll(".position-eq");
     expect(rows.length).toBe(1);
     expect(rows[0].textContent).toContain("+100");
-    expect(rows[0].textContent).toContain("Δ-equiv sh");
+    expect(rows[0].textContent).toContain("Δ-eq");
   });
 
   it("marks hand-entered implied vol as an estimate", () => {
@@ -266,8 +270,8 @@ describe("OneBook dashboard", () => {
     });
 
     // Both on the position row and on the Greek tiles.
-    expect(screen.getAllByText("est").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("estimated IV").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/^\s*est\s*$/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("est. IV").length).toBeGreaterThan(0);
   });
 
   it("flags a net short gamma book in the callouts", () => {
@@ -299,7 +303,7 @@ describe("OneBook dashboard", () => {
   it("removes a position", () => {
     render(<App />);
     addStock("AAPL", "100");
-    expect(screen.getByText("1 position · 1 underlying")).toBeTruthy();
+    expect(screen.getByText("1 pos · 1 sym")).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText("Remove AAPL position"));
     expect(screen.getByText("Your book is empty")).toBeTruthy();
@@ -312,12 +316,118 @@ describe("OneBook dashboard", () => {
 
     render(<App />);
     expect(railTickers()).toEqual(["AAPL"]);
-    expect(screen.getByText("1 position · 1 underlying")).toBeTruthy();
+    expect(screen.getByText("1 pos · 1 sym")).toBeTruthy();
   });
 
   it("survives corrupt localStorage rather than failing to mount", () => {
     localStorage.setItem("onebook.positions.v1", "{not json");
     render(<App />);
     expect(screen.getByText("Your book is empty")).toBeTruthy();
+  });
+});
+
+describe("connect accounts", () => {
+  function openConnect() {
+    render(<App />);
+    fireEvent.click(screen.getByText(/^Accounts/));
+  }
+
+  /** The submit button, scoped to the footer so the broker rows' "Connect →"
+   *  labels don't match ambiguously. */
+  function submitButton(): HTMLElement {
+    const foot = document.querySelector(".modal-foot");
+    if (!foot) throw new Error("No modal footer");
+    return within(foot as HTMLElement).getByText("Connect");
+  }
+
+  it("groups brokers by what the user actually has to do", () => {
+    openConnect();
+    expect(screen.getByText("Connect now")).toBeTruthy();
+    expect(screen.getByText("Needs broker approval")).toBeTruthy();
+    expect(screen.getByText("Requires local setup")).toBeTruthy();
+    expect(screen.getByText("CSV import only")).toBeTruthy();
+  });
+
+  it("lists brokers that have no API rather than omitting them", () => {
+    openConnect();
+    // The whole point: someone on Fidelity must not be left hunting.
+    for (const name of ["Fidelity", "Robinhood", "Vanguard", "Webull"]) {
+      expect(screen.getByText(name)).toBeTruthy();
+    }
+  });
+
+  it("refuses to offer an unofficial Robinhood integration", () => {
+    openConnect();
+    const row = screen.getByText("Robinhood").closest(".broker");
+    expect(row?.textContent).toContain("Import CSV");
+    expect(row?.textContent).toMatch(/terms|restricted/i);
+  });
+
+  it("flags the IBKR local gateway requirement up front", () => {
+    openConnect();
+    const row = screen.getByText("Interactive Brokers").closest(".broker");
+    expect(row?.textContent).toMatch(/gateway/i);
+    expect((row as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("only enables brokers with a working adapter", () => {
+    openConnect();
+    const alpaca = screen.getByText("Alpaca").closest("button");
+    const etrade = screen.getByText("E*TRADE").closest("button");
+    expect((alpaca as HTMLButtonElement).disabled).toBe(false);
+    expect((etrade as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("opens a credential form for an API-key broker", () => {
+    openConnect();
+    fireEvent.click(screen.getByText("Alpaca"));
+    expect(screen.getByLabelText("API Key ID")).toBeTruthy();
+    expect(
+      (screen.getByLabelText("API Secret Key") as HTMLInputElement).type,
+    ).toBe("password");
+  });
+
+  it("requires every credential field before submitting", () => {
+    openConnect();
+    fireEvent.click(screen.getByText("Alpaca"));
+    fireEvent.click(submitButton());
+    expect(screen.getByText(/required/i)).toBeTruthy();
+  });
+
+  it("explains that connecting needs the API rather than failing silently", async () => {
+    openConnect();
+    fireEvent.click(screen.getByText("Alpaca"));
+    fireEvent.change(screen.getByLabelText("API Key ID"), {
+      target: { value: "PKTEST" },
+    });
+    fireEvent.change(screen.getByLabelText("API Secret Key"), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(submitButton());
+
+    // No VITE_API_ORIGIN in tests, so this must say so plainly.
+    expect(await screen.findByText(/not reachable/i)).toBeTruthy();
+  });
+
+  it("states that access is read-only", () => {
+    openConnect();
+    const foot = document.querySelector(".modal-foot") as HTMLElement;
+    expect(within(foot).getByText(/never places trades/i)).toBeTruthy();
+  });
+
+  it("routes a CSV-only broker into the import flow", () => {
+    openConnect();
+    fireEvent.click(screen.getByText("Fidelity"));
+    expect(screen.getByText("Import positions from CSV")).toBeTruthy();
+  });
+});
+
+describe("theme", () => {
+  it("defaults to dark and toggles to light", () => {
+    render(<App />);
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+
+    fireEvent.click(screen.getByLabelText("Toggle theme"));
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
   });
 });

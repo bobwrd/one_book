@@ -43,7 +43,7 @@ export function Tile({
           {isGood ? "▼" : "▲"} {formatDelta(Math.abs(delta!))}
         </span>
       )}
-      {estimate && <span className="tile-estimate">estimated IV</span>}
+      {estimate && <span className="tile-flag">est. IV</span>}
     </div>
   );
 }
@@ -80,7 +80,7 @@ export function RiskTiles({
   return (
     <div className="tiles">
       <Tile
-        label="Annualized vol"
+        label="Ann. vol"
         value={
           annualizedVolatility === null ? "—" : formatUsd(annualizedVolatility, 0)
         }
@@ -89,21 +89,21 @@ export function RiskTiles({
         hint="One standard deviation of the book's value over a year, from the covariance matrix of delta-equivalent exposure."
       />
       <Tile
-        label="VaR 95% · 1d"
+        label="VaR 95 · 1d"
         value={var95 === null ? "—" : formatUsd(var95, 0)}
         delta={delta(var95, baseline?.var95)}
         higherIsWorse
         hint="On 95 of 100 days, the one-day loss stays under this. Parametric (variance-covariance) method."
       />
       <Tile
-        label="VaR 99% · 1d"
+        label="VaR 99 · 1d"
         value={var99 === null ? "—" : formatUsd(var99, 0)}
         delta={delta(var99, baseline?.var99)}
         higherIsWorse
         hint="On 99 of 100 days, the one-day loss stays under this. The tail beyond it is not bounded."
       />
       <Tile
-        label="VaR 95% · hist"
+        label="VaR 95 · hist"
         value={historicalVar95 === null ? "—" : formatUsd(historicalVar95, 0)}
         higherIsWorse
         hint="The same 95% loss threshold, read off actual past returns rather than assuming a normal distribution. Usually the more honest number for an options book."

@@ -17,14 +17,15 @@ function cellColor(value: number): string {
   const magnitude = Math.min(1, Math.abs(value));
   // Floor the alpha so a near-zero cell is still visibly a cell.
   const alpha = 0.12 + magnitude * 0.65;
-  return value >= 0
-    ? `rgba(168, 85, 247, ${alpha})`
-    : `rgba(245, 158, 11, ${alpha})`;
+  // color-mix keeps the scale tied to the theme tokens, so it tracks the
+  // light/dark switch instead of being frozen to one palette.
+  const token = value >= 0 ? "--corr-pos" : "--corr-neg";
+  return `color-mix(in oklab, var(${token}) ${(alpha * 100).toFixed(0)}%, transparent)`;
 }
 
 /** Keep label text readable against the strongest fills. */
 function textColor(value: number): string {
-  return Math.abs(value) > 0.6 ? "#ffffff" : "var(--text-dim)";
+  return Math.abs(value) > 0.6 ? "var(--ink)" : "var(--ink-muted)";
 }
 
 export function CorrelationHeatmap({ tickers, values }: Props) {
@@ -98,7 +99,7 @@ export function CorrelationHeatmap({ tickers, values }: Props) {
           gap: 12,
           marginTop: 10,
           fontSize: 10,
-          color: "var(--text-faint)",
+          color: "var(--ink-faint)",
           alignItems: "center",
         }}
       >

@@ -11,6 +11,7 @@ import type { Position } from "@onebook/finance";
 
 const POSITIONS_KEY = "onebook.positions.v1";
 const SPOT_KEY = "onebook.spot.v1";
+const THEME_KEY = "onebook.theme.v1";
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -95,4 +96,31 @@ export function useSpotPrices(tickers: string[]) {
   }, []);
 
   return { spot, setPrice, setSpot };
+}
+
+/**
+ * Theme, persisted and applied to the document root. The initial value is
+ * also set inline in index.html so the page never flashes the wrong theme.
+ */
+export function useTheme() {
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    const stored = localStorage.getItem(THEME_KEY);
+    return stored === "light" ? "light" : "dark";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // Storage unavailable; the theme still applies for this session.
+    }
+  }, [theme]);
+
+  const toggleTheme = useCallback(
+    () => setTheme((t) => (t === "dark" ? "light" : "dark")),
+    [],
+  );
+
+  return { theme, toggleTheme };
 }

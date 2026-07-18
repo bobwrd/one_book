@@ -1,12 +1,12 @@
 /**
  * The left rail: the book itself.
  *
- * Every row shows its delta-equivalent share count inline, which is where the
- * app's core idea becomes visible rather than staying an implementation detail.
+ * Every row carries its delta-equivalent share count, which is where the
+ * app's core idea stops being an implementation detail and becomes something
+ * you can read directly.
  */
 
-import type { PositionExposure } from "@onebook/finance";
-import type { Position } from "@onebook/finance";
+import type { Position, PositionExposure } from "@onebook/finance";
 import { isOption } from "@onebook/finance";
 import { daysUntil, formatExpiry, formatShares, formatUsd } from "../format.js";
 
@@ -16,6 +16,7 @@ interface Props {
   onRemove: (id: string) => void;
   onAdd: () => void;
   onImport: () => void;
+  onConnect: () => void;
 }
 
 export function PositionRail({
@@ -24,39 +25,39 @@ export function PositionRail({
   onRemove,
   onAdd,
   onImport,
+  onConnect,
 }: Props) {
   return (
     <div className="rail">
-      <div
-        style={{
-          display: "flex",
-          gap: 6,
-          marginBottom: 12,
-        }}
-      >
+      <div className="rail-head">
         <button className="primary" onClick={onAdd} style={{ flex: 1 }}>
-          + Add position
+          Add position
         </button>
         <button onClick={onImport} title="Import a broker CSV export">
-          Import
+          CSV
+        </button>
+        <button onClick={onConnect} title="Connect a brokerage account">
+          Connect
         </button>
       </div>
 
-      {positions.length === 0 ? (
-        <div className="empty">
-          <h3>No positions yet</h3>
-          Add a stock or option, or import a CSV export from your broker.
-        </div>
-      ) : (
-        positions.map((position) => (
-          <PositionRow
-            key={position.id}
-            position={position}
-            exposure={exposures.get(position.id)}
-            onRemove={() => onRemove(position.id)}
-          />
-        ))
-      )}
+      <div className="rail-body">
+        {positions.length === 0 ? (
+          <div className="empty">
+            <b>No positions</b>
+            Add one by hand, import a CSV, or connect a brokerage account.
+          </div>
+        ) : (
+          positions.map((position) => (
+            <PositionRow
+              key={position.id}
+              position={position}
+              exposure={exposures.get(position.id)}
+              onRemove={() => onRemove(position.id)}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -72,38 +73,34 @@ function PositionRow({
 }) {
   const option = isOption(position);
   const dte = option ? daysUntil(position.expiry) : null;
+  const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
 
   return (
-    <div className="position-row">
-      <div className="position-main">
-        <div>
-          <span className="position-ticker">{position.ticker}</span>{" "}
-          {option ? (
-            <span className="position-detail">
-              {position.quantity > 0 ? "+" : ""}
-              {position.quantity} {position.right === "call" ? "C" : "P"}
-              {position.strike} {formatExpiry(position.expiry)}
-            </span>
-          ) : (
-            <span className="position-detail">
-              {position.quantity > 0 ? "+" : ""}
-              {position.quantity} sh
-            </span>
-          )}
+    <div className="position">
+      <div style={{ minWidth: 0 }}>
+        <div className="position-sym">
+          {position.ticker}
+          <span className="muted">
+            {" "}
+            {option
+              ? `${signed(position.quantity)} ${position.right === "call" ? "C" : "P"}${position.strike}`
+              : `${signed(position.quantity)} sh`}
+          </span>
         </div>
-        <div className="position-detail">
-          {option && dte !== null && (
+
+        <div className="position-meta">
+          {option && (
             <>
-              {dte < 0 ? (
-                <span className="badge">expired</span>
+              {formatExpiry(position.expiry)}
+              {" · "}
+              {dte !== null && dte < 0 ? (
+                <span className="tag warn">expired</span>
               ) : (
-                <>{dte}d</>
+                `${dte}d`
               )}
               {" · "}
-              IV {(position.iv * 100).toFixed(0)}%{" "}
-              {position.ivIsEstimate && (
-                <span className="badge estimate">est</span>
-              )}
+              {(position.iv * 100).toFixed(0)}%
+              {position.ivIsEstimate && <span className="tag warn"> est</span>}
               {" · "}
             </>
           )}
@@ -111,22 +108,21 @@ function PositionRow({
         </div>
       </div>
 
-      <div>
-        <div className="position-delta-eq">
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <div className="position-eq">
           {exposure ? (
             <>
               {formatShares(exposure.shareEquivalents)}
-              <small>Δ-equiv sh</small>
+              <small>Δ-eq</small>
             </>
           ) : (
-            <span className="position-detail">—</span>
+            <span className="faint">—</span>
           )}
         </div>
         <button
-          className="ghost"
+          className="icon position-remove"
           onClick={onRemove}
           aria-label={`Remove ${position.ticker} position`}
-          style={{ float: "right", marginTop: 2 }}
         >
           ✕
         </button>

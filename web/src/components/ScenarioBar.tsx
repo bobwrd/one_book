@@ -1,10 +1,9 @@
 /**
- * The flagship control (brief section 9.2).
+ * The flagship control.
  *
- * Three sliders drive the whole dashboard. They recompute continuously on
- * drag rather than on release — the point of the interaction is watching every
- * metric move together, which is lost if the numbers only update after you let
- * go.
+ * Three sliders drive the whole dashboard, recomputing continuously on drag
+ * rather than on release — watching every metric move together is the entire
+ * point, and that is lost if the numbers only update after you let go.
  */
 
 import type { Shock } from "@onebook/finance";
@@ -21,72 +20,84 @@ export function ScenarioBar({ shock, onChange }: Props) {
 
   return (
     <div className="scenario-bar">
-      <div className="slider-group">
-        <div className="slider-label">
-          <span>Price shock</span>
-          <span className="num">{formatSignedPercent(shock.priceShock)}</span>
-        </div>
-        <input
-          type="range"
-          min={-30}
-          max={30}
-          step={0.5}
-          value={shock.priceShock * 100}
-          aria-label="Underlying price shock, percent"
-          onChange={(e) =>
-            onChange({ ...shock, priceShock: Number(e.target.value) / 100 })
-          }
-        />
-      </div>
+      <Slider
+        label="Price"
+        display={formatSignedPercent(shock.priceShock)}
+        ariaLabel="Underlying price shock, percent"
+        min={-30}
+        max={30}
+        step={0.5}
+        value={shock.priceShock * 100}
+        onChange={(v) => onChange({ ...shock, priceShock: v / 100 })}
+      />
 
-      <div className="slider-group">
-        <div className="slider-label">
-          <span>Vol shock</span>
-          <span className="num">
-            {shock.volShock >= 0 ? "+" : ""}
-            {(shock.volShock * 100).toFixed(0)} pts
-          </span>
-        </div>
-        <input
-          type="range"
-          min={-30}
-          max={30}
-          step={1}
-          value={shock.volShock * 100}
-          aria-label="Implied volatility shock, percentage points"
-          onChange={(e) =>
-            onChange({ ...shock, volShock: Number(e.target.value) / 100 })
-          }
-        />
-      </div>
+      <Slider
+        label="Volatility"
+        display={`${shock.volShock >= 0 ? "+" : ""}${(shock.volShock * 100).toFixed(0)} pts`}
+        ariaLabel="Implied volatility shock, percentage points"
+        min={-30}
+        max={30}
+        step={1}
+        value={shock.volShock * 100}
+        onChange={(v) => onChange({ ...shock, volShock: v / 100 })}
+      />
 
-      <div className="slider-group">
-        <div className="slider-label">
-          <span>Days forward</span>
-          <span className="num">{shock.daysForward}d</span>
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={90}
-          step={1}
-          value={shock.daysForward}
-          aria-label="Days forward for time decay"
-          onChange={(e) =>
-            onChange({ ...shock, daysForward: Number(e.target.value) })
-          }
-        />
-      </div>
+      <Slider
+        label="Time"
+        display={`+${shock.daysForward}d`}
+        ariaLabel="Days forward for time decay"
+        min={0}
+        max={90}
+        step={1}
+        value={shock.daysForward}
+        onChange={(v) => onChange({ ...shock, daysForward: v })}
+      />
 
       <button
-        onClick={() =>
-          onChange({ priceShock: 0, volShock: 0, daysForward: 0 })
-        }
+        onClick={() => onChange({ priceShock: 0, volShock: 0, daysForward: 0 })}
         disabled={!isShocked}
         title="Return all sliders to current market"
       >
-        Reset to spot
+        Reset
       </button>
+    </div>
+  );
+}
+
+function Slider({
+  label,
+  display,
+  ariaLabel,
+  min,
+  max,
+  step,
+  value,
+  onChange,
+}: {
+  label: string;
+  display: string;
+  ariaLabel: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="slider-group">
+      <span className="slider-label">
+        <span>{label}</span>
+        <b>{display}</b>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        aria-label={ariaLabel}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
     </div>
   );
 }

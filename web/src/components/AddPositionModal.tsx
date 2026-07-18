@@ -80,10 +80,16 @@ export function AddPositionModal({ onAdd, onClose }: Props) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Add position</h2>
+        <div className="modal-head">
+          <h2>Add position</h2>
+          <button className="icon" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </div>
 
+        <div className="modal-body">
         <div className="tabs">
           <button
             className={`tab ${type === "stock" ? "active" : ""}`}
@@ -99,7 +105,7 @@ export function AddPositionModal({ onAdd, onClose }: Props) {
           </button>
         </div>
 
-        {error && <div className="error-banner">{error}</div>}
+        {error && <div className="notice error">{error}</div>}
 
         <div className="field-row">
           <div className="field">
@@ -178,9 +184,7 @@ export function AddPositionModal({ onAdd, onClose }: Props) {
         )}
 
         <div className="field">
-          <label htmlFor="basis">
-            Cost basis {type === "option" ? "(per share)" : "(per share)"}
-          </label>
+          <label htmlFor="basis">Cost basis (per share)</label>
           <input
             id="basis"
             type="number"
@@ -190,12 +194,16 @@ export function AddPositionModal({ onAdd, onClose }: Props) {
           />
         </div>
 
-        <p style={{ fontSize: 11, color: "var(--text-faint)", margin: "4px 0 0" }}>
-          Use a negative quantity for a short position — a written call or a
+        <p
+          className="faint"
+          style={{ fontSize: "0.625rem", lineHeight: 1.5, margin: 0 }}
+        >
+          Use a negative quantity for a short position — a written call or
           short stock.
         </p>
+        </div>
 
-        <div className="modal-actions">
+        <div className="modal-foot">
           <button onClick={onClose}>Cancel</button>
           <button className="primary" onClick={submit}>
             Add

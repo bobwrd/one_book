@@ -96,16 +96,50 @@ Every broker adapter implements the same shape so the frontend and risk engine n
 - `refresh(token)` — token refresh where supported.
 
 ### 4.3 Broker-by-broker guidance
-| Broker | Auth | Notes / priority |
+
+**Tier 1 — build first.** Self-serve, no approval queue, usable today.
+
+| Broker | Auth | Notes |
 |---|---|---|
-| Alpaca | API key/secret | **Build first.** Developer-first, free, paper-trading sandbox — ideal for dev + demo without approval friction. |
-| Tradier | OAuth 2.0 / token | Simple REST, strong options coverage, sandbox available. Good second integration. |
-| Charles Schwab | OAuth 2.0 | Free API (ex-TD Ameritrade); positions, orders, option chains. Requires developer registration/approval. |
-| E*TRADE | OAuth (1.0a) | Heavier approval; supports lot/position-ID detail. Lower priority. |
-| TradeStation | OAuth 2.0 | REST + streaming, good order/market-data coverage. |
-| Interactive Brokers | Local gateway / OAuth | Most comprehensive, but Client Portal API needs a running gateway — not a pure hosted flow. Support read-only positions; document the gateway requirement. |
-| Tastytrade | Semi-official API | Options-heavy; treat as best-effort adapter. |
-| Robinhood / Webull / Fidelity / Vanguard | None (retail) | **No official retail read API.** Do not build unofficial Robinhood scraping (ToS + account risk). Route these to CSV import only. |
+| Alpaca | API key/secret | **Start here.** Developer-first, free paper sandbox, no approval friction. The only broker that can be built and demoed end-to-end without waiting on anyone. |
+| Tradier | Token / OAuth 2.0 | Simple REST, strong options coverage, sandbox available. Personal access tokens work without an approved OAuth app. |
+| Tradovate / Ironbeam | REST + WebSocket | Futures-focused, fast and simple, low or no cost. Only relevant once futures are in scope — out of scope for v1. |
+
+**Tier 2 — approval required.** Real APIs, but gated behind an application. Start the paperwork early even though they ship later.
+
+| Broker | Auth | Notes |
+|---|---|---|
+| Charles Schwab | OAuth 2.0 | Free API inherited from TD Ameritrade, no account minimums. Quotes, positions, orders, option chains. Approval has a real lead time. |
+| TradeStation | OAuth 2.0 | Long-standing REST + streaming aimed at active traders. Good order and market-data coverage. |
+| E*TRADE | OAuth 1.0a | Heavier approval. Notable for lot/position-ID selection at time of sale, which matters for tax-lot accuracy. |
+| Lime Trading | API key | Low-latency direct-market-access for US equities and options. Aimed at serious automation; overkill for v1. |
+| Rithmic | Proprietary | High-performance futures execution, latency-sensitive. Out of scope. |
+
+**Tier 3 — awkward or semi-official.** Support on a best-effort basis and document the caveat prominently.
+
+| Broker | Auth | Notes |
+|---|---|---|
+| Interactive Brokers | Local gateway / OAuth | The most comprehensive retail API — REST Client Portal, socket TWS, read-only Flex — across nearly all global markets and asset classes. But Client Portal requires a **running local gateway**, so it is not a pure hosted flow. Support read-only positions and document the gateway requirement plainly. |
+| Tastytrade | Semi-official | Options-heavy and increasingly popular for derivatives strategies. No formal public API contract, so treat it as best-effort and expect breakage. |
+
+**Tier 4 — CSV only.** No official retail read API exists.
+
+| Broker | Why |
+|---|---|
+| Robinhood | No official public API. Unofficial community libraries exist and carry **account-closure risk** — do not build against them. |
+| Webull | Provides market data but no official order/position API for retail. |
+| Fidelity | Limited, mostly institutional access with a complex approval process. No retail self-serve option. |
+| Vanguard | No retail API. |
+
+These route to CSV import, which works for every broker on earth and is why it ships in Phase 1 rather than as a fallback bolted on later.
+
+### 4.3.1 Broker-as-a-service (explicitly out of scope)
+
+Alpaca Broker API, DriveWealth, and Apex Fintech let you *open and manage accounts for other users*. That makes OneBook a regulated broker-dealer intermediary rather than a read-only analytics tool, which is a fundamentally different legal product. Noted here so the option is visibly rejected rather than accidentally reconsidered.
+
+### 4.3.2 Market-data providers (no trading)
+
+Separate concern from brokerage connections, behind its own `MarketDataProvider` interface (section 3.4): Polygon.io (real-time + historical across stocks, options, forex, crypto), Alpha Vantage (free tier, quotes/fundamentals/indicators), and Finnhub / IEX Cloud / Twelve Data. Start with a free tier, but assume terms will change without notice.
 
 ### 4.4 OAuth flow on Workers
 - Frontend hits `GET /connect/:broker` → Worker generates `state`, stores in KV, redirects to broker authUrl.

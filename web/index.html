@@ -3,6 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Apply the persisted theme before first paint, so the page never
+         flashes the wrong one on load. -->
+    <script>
+      (function () {
+        var t = localStorage.getItem("onebook.theme.v1");
+        document.documentElement.setAttribute(
+          "data-theme",
+          t === '"light"' || t === "light" ? "light" : "dark",
+        );
+      })();
+    </script>
     <title>OneBook — unified portfolio risk</title>
   </head>
   <body>

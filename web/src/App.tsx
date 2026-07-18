@@ -5,7 +5,7 @@
  * math and the scenario interaction can be exercised with no backend at all.
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   alignSeries,
   bookExposure,
@@ -31,9 +31,20 @@ import { ScenarioBar } from "./components/ScenarioBar.js";
 import { GreekTiles, RiskTiles, Tile } from "./components/RiskTiles.js";
 import { AddPositionModal } from "./components/AddPositionModal.js";
 import { ImportModal } from "./components/ImportModal.js";
+import {
+  ConnectModal,
+  type Connection,
+} from "./components/ConnectModal.js";
 import { PayoffChart } from "./charts/PayoffChart.js";
 import { CorrelationHeatmap } from "./charts/CorrelationHeatmap.js";
-import { usePositions, useSpotPrices } from "./store.js";
+import { usePositions, useSpotPrices, useTheme } from "./store.js";
+import {
+  ApiUnavailableError,
+  connectWithKeys,
+  disconnect,
+  fetchConnections,
+  isApiConfigured,
+} from "./api.js";
 import {
   formatSignedUsd,
   formatPercent,
@@ -56,6 +67,45 @@ export function App() {
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showPrices, setShowPrices] = useState(false);
+  const [showConnect, setShowConnect] = useState(false);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const { theme, toggleTheme } = useTheme();
+
+  // Connections live server-side; without the API this stays empty and the
+  // connect flow explains why rather than silently doing nothing.
+  useEffect(() => {
+    if (!isApiConfigured()) return;
+    fetchConnections()
+      .then(setConnections)
+      .catch(() => setConnections([]));
+  }, []);
+
+  const handleConnect = useCallback(
+    async (broker: string, credentials: Record<string, string>) => {
+      setConnectError(null);
+      try {
+        await connectWithKeys(broker, credentials);
+        setConnections(await fetchConnections());
+      } catch (err) {
+        setConnectError(
+          err instanceof ApiUnavailableError || err instanceof Error
+            ? err.message
+            : "Could not connect that account.",
+        );
+      }
+    },
+    [],
+  );
+
+  const handleDisconnect = useCallback(async (broker: string) => {
+    try {
+      await disconnect(broker);
+      setConnections(await fetchConnections());
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : "Disconnect failed.");
+    }
+  }, []);
 
   const market: MarketSnapshot = useMemo(
     () => ({
@@ -172,14 +222,24 @@ export function App() {
     <div className="app">
       <header className="topbar">
         <span className="brand">
-          One<span>Book</span>
+          one<em>book</em>
         </span>
-        <span style={{ fontSize: 11, color: "var(--text-faint)" }}>
-          {positions.length} position{positions.length === 1 ? "" : "s"} ·{" "}
-          {tickers.length} underlying{tickers.length === 1 ? "" : "s"}
+        <span className="topbar-meta">
+          {positions.length} pos · {tickers.length} sym
         </span>
         <div className="topbar-spacer" />
+        <button onClick={() => setShowConnect(true)}>
+          Accounts
+          {connections.length > 0 && ` · ${connections.length}`}
+        </button>
         <button onClick={() => setShowPrices(true)}>Prices</button>
+        <button
+          onClick={toggleTheme}
+          title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+          aria-label="Toggle theme"
+        >
+          {theme === "dark" ? "◐" : "◑"}
+        </button>
         {positions.length > 0 && (
           <button
             onClick={() => {
@@ -198,24 +258,25 @@ export function App() {
           onRemove={remove}
           onAdd={() => setShowAdd(true)}
           onImport={() => setShowImport(true)}
+          onConnect={() => setShowConnect(true)}
         />
 
         <div className="analysis">
           <ScenarioBar shock={shock} onChange={setShock} />
 
           {positions.length === 0 ? (
-            <div className="empty" style={{ padding: 64 }}>
-              <h3>Your book is empty</h3>
-              Add a stock and an option against it, then drag the price slider
-              to watch every metric move together.
+            <div className="empty" style={{ padding: "4rem 1rem" }}>
+              <b>Your book is empty</b>
+              Add a stock and write an option against it, then drag the price
+              slider to watch every metric move together.
             </div>
           ) : (
             <>
-              <div className="panel">
-                <h3 className="panel-title">
+              <div className="section">
+                <h3 className="section-title">
                   Scenario P&amp;L
                   {isShocked && (
-                    <span style={{ color: "var(--text-dim)" }}>
+                    <span style={{ color: "var(--ink-muted)" }}>
                       {" "}
                       — vs. current market
                     </span>
@@ -261,8 +322,8 @@ export function App() {
                 </div>
               </div>
 
-              <div className="panel">
-                <h3 className="panel-title">Portfolio risk</h3>
+              <div className="section">
+                <h3 className="section-title">Portfolio risk</h3>
                 <RiskTiles
                   annualizedVolatility={shocked?.vol ?? null}
                   var95={shocked?.var95 ?? null}
@@ -281,8 +342,8 @@ export function App() {
                 />
               </div>
 
-              <div className="panel">
-                <h3 className="panel-title">Net Greeks — whole book</h3>
+              <div className="section">
+                <h3 className="section-title">Net Greeks — whole book</h3>
                 <GreekTiles
                   greeks={
                     shocked?.exposure.netGreeks ?? {
@@ -303,16 +364,16 @@ export function App() {
               </div>
 
               <div className="split">
-                <div className="panel" style={{ borderBottom: "none" }}>
-                  <h3 className="panel-title">Combined payoff</h3>
+                <div className="section">
+                  <h3 className="section-title">Combined payoff</h3>
                   <PayoffChart
                     curve={curve}
                     breakevens={breakevens(curve)}
                     currentShock={shock.priceShock}
                   />
                 </div>
-                <div className="panel" style={{ borderBottom: "none" }}>
-                  <h3 className="panel-title">Correlation</h3>
+                <div className="section">
+                  <h3 className="section-title">Correlation</h3>
                   {baseline?.correlation ? (
                     <CorrelationHeatmap
                       tickers={baseline.correlation.tickers}
@@ -320,7 +381,7 @@ export function App() {
                     />
                   ) : (
                     <div className="empty">
-                      <h3>Not enough underlyings</h3>
+                      <b>Not enough underlyings</b>
                       Correlation needs at least two tickers.
                     </div>
                   )}
@@ -328,22 +389,22 @@ export function App() {
               </div>
 
               {callouts.length > 0 && (
-                <div className="panel">
-                  <h3 className="panel-title">Risk callouts</h3>
+                <div className="section">
+                  <h3 className="section-title">Risk callouts</h3>
                   {callouts.map((callout) => (
                     <div
                       key={callout.label}
                       className={`callout ${callout.severity}`}
                     >
-                      <span className="callout-label">{callout.label}</span>
-                      <span className="callout-detail">{callout.detail}</span>
+                      <b>{callout.label}</b>
+                      <span>{callout.detail}</span>
                     </div>
                   ))}
                 </div>
               )}
 
-              <div className="panel">
-                <h3 className="panel-title">Exposure by underlying</h3>
+              <div className="section">
+                <h3 className="section-title">Exposure by underlying</h3>
                 <div className="scroll-x">
                   <table>
                     <thead>
@@ -395,6 +456,22 @@ export function App() {
           onClose={() => setShowImport(false)}
         />
       )}
+      {showConnect && (
+        <ConnectModal
+          connections={connections}
+          error={connectError}
+          onConnect={handleConnect}
+          onDisconnect={handleDisconnect}
+          onImportCsv={() => {
+            setShowConnect(false);
+            setShowImport(true);
+          }}
+          onClose={() => {
+            setShowConnect(false);
+            setConnectError(null);
+          }}
+        />
+      )}
       {showPrices && (
         <PricesModal
           tickers={tickers}
@@ -419,10 +496,16 @@ function PricesModal({
   onClose: () => void;
 }) {
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Spot prices</h2>
-        <p style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 0 }}>
+        <div className="modal-head">
+          <h2>Spot prices</h2>
+          <button className="icon" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </div>
+        <div className="modal-body">
+        <p className="faint" style={{ fontSize: "0.625rem", marginTop: 0 }}>
           Prices are entered by hand in this build. Connecting the API replaces
           these with live quotes.
         </p>
@@ -441,7 +524,8 @@ function PricesModal({
             </div>
           ))
         )}
-        <div className="modal-actions">
+        </div>
+        <div className="modal-foot">
           <button className="primary" onClick={onClose}>
             Done
           </button>

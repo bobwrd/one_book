@@ -73,19 +73,22 @@ export function ImportModal({ onImport, onClose }: Props) {
     mapping !== null && mapping.confidence < CONFIRM_THRESHOLD;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal"
-        style={{ maxWidth: 620 }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2>Import positions from CSV</h2>
+    <div className="backdrop" onClick={onClose}>
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>Import positions from CSV</h2>
+          <button className="icon" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </div>
 
-        {error && <div className="error-banner">{error}</div>}
+        <div className="modal-body">
+        {error && <div className="notice error">{error}</div>}
 
         {!rows && (
           <>
-            <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 0 }}>
+            <p className="faint"
+              style={{ fontSize: "0.6875rem", lineHeight: 1.5, marginTop: 0 }}>
               Export your positions from any broker and drop the file here.
               Column names vary between brokers, so the mapping is shown for
               confirmation before anything is imported.
@@ -104,13 +107,13 @@ export function ImportModal({ onImport, onClose }: Props) {
         {rows && mapping && preview && (
           <>
             {lowConfidence && (
-              <div className="error-banner">
+              <div className="notice error">
                 The column mapping could not be determined confidently. Please
                 check each field below before importing.
               </div>
             )}
 
-            <h3 style={{ fontSize: 12, color: "var(--text-dim)" }}>
+            <h3 className="section-title">
               Column mapping
             </h3>
             <div style={{ display: "grid", gap: 6, marginBottom: 14 }}>
@@ -124,7 +127,7 @@ export function ImportModal({ onImport, onClose }: Props) {
                     alignItems: "center",
                   }}
                 >
-                  <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                  <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>
                     {FIELD_LABELS[field]}
                   </span>
                   <select
@@ -147,7 +150,7 @@ export function ImportModal({ onImport, onClose }: Props) {
               ))}
             </div>
 
-            <h3 style={{ fontSize: 12, color: "var(--text-dim)" }}>
+            <h3 className="section-title">
               Preview — {preview.positions.length} position
               {preview.positions.length === 1 ? "" : "s"}
               {preview.issues.length > 0 && (
@@ -187,11 +190,11 @@ export function ImportModal({ onImport, onClose }: Props) {
             </div>
 
             {preview.issues.length > 0 && (
-              <details style={{ marginTop: 10, fontSize: 11 }}>
+              <details style={{ marginTop: 10, fontSize: "0.625rem" }}>
                 <summary style={{ cursor: "pointer", color: "var(--warn)" }}>
                   Skipped rows
                 </summary>
-                <ul style={{ paddingLeft: 18, color: "var(--text-dim)" }}>
+                <ul style={{ paddingLeft: 18, color: "var(--ink-muted)" }}>
                   {preview.issues.slice(0, 20).map((issue) => (
                     <li key={issue.row}>
                       Row {issue.row}: {issue.message}
@@ -200,22 +203,25 @@ export function ImportModal({ onImport, onClose }: Props) {
                 </ul>
               </details>
             )}
-
-            <div className="modal-actions">
-              <button onClick={onClose}>Cancel</button>
-              <button
-                className="primary"
-                disabled={preview.positions.length === 0}
-                onClick={() => {
-                  onImport(preview.positions);
-                  onClose();
-                }}
-              >
-                Import {preview.positions.length}
-              </button>
-            </div>
           </>
         )}
+        </div>
+
+        <div className="modal-foot">
+          <button onClick={onClose}>Cancel</button>
+          {preview && (
+            <button
+              className="primary"
+              disabled={preview.positions.length === 0}
+              onClick={() => {
+                onImport(preview.positions);
+                onClose();
+              }}
+            >
+              Import {preview.positions.length}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
