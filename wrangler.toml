@@ -25,10 +25,35 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 preview_urls = false
 
+# The dashboard and the API ship as one Worker, on one origin.
+#
+# That is not just convenience: same-origin means no CORS preflight, no
+# APP_ORIGIN that can silently drift out of sync with where the frontend
+# actually lives, and session cookies that work without SameSite gymnastics.
+# The single most common way to break this app was a stale origin — this
+# removes the failure mode rather than documenting it.
+#
+# API paths hit the Worker first. Everything else falls through to the built
+# SPA, so client-side routes resolve to index.html instead of 404ing.
+[assets]
+directory = "web/dist"
+not_found_handling = "single-page-application"
+run_worker_first = [
+  "/health",
+  "/auth/*",
+  "/brokers",
+  "/portfolios",
+  "/portfolios/*",
+  "/connections",
+  "/connections/*",
+  "/connect/*",
+  "/callback/*",
+]
+
 [vars]
 # APP_ORIGIN must match wherever the dashboard is actually served. It is the
 # CORS allowlist, so a stale value here silently blocks the real frontend.
-APP_ORIGIN = "http://localhost:5173"
+APP_ORIGIN = "https://onebook-api.arinjain-mail.workers.dev"
 API_ORIGIN = "https://onebook-api.arinjain-mail.workers.dev"
 MARKET_DATA_PROVIDER = "alpaca"
 # Data feed. Both "iex" and "delayed_sip" are free; "sip" needs a paid Alpaca

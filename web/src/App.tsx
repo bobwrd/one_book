@@ -62,7 +62,7 @@ import {
 const NO_SHOCK: Shock = { priceShock: 0, volShock: 0, daysForward: 0 };
 
 export function App() {
-  const { auth, refreshAuth, signOut } = useAuth();
+  const { auth, apiUp, refreshAuth, signOut } = useAuth();
   const portfolioId = useDefaultPortfolio(auth);
   const { positions, isSample, loading, error: bookError, add, addMany, remove, clear } =
     useBook(auth, portfolioId);
@@ -500,6 +500,7 @@ export function App() {
       )}
       {showLogin && (
         <LoginModal
+          apiUp={apiUp}
           onClose={() => {
             setShowLogin(false);
             void refreshAuth();

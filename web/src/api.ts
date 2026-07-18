@@ -11,12 +11,17 @@
 import type { PriceSeries } from "@onebook/finance";
 import type { Connection } from "./components/ConnectModal.js";
 
+/**
+ * Empty means same-origin: the Worker serves both the dashboard and the API,
+ * so relative paths just work. VITE_API_ORIGIN overrides it for local dev,
+ * where Vite serves the frontend and the API lives elsewhere.
+ */
 const API_ORIGIN = import.meta.env.VITE_API_ORIGIN ?? "";
 
 export class ApiUnavailableError extends Error {
   constructor() {
     super(
-      "The OneBook API is not reachable. Brokerage connections need the Worker running, since credentials are encrypted server-side and never stored in the browser.",
+      "The OneBook API is not reachable. Signing in and brokerage connections need the Worker running, since credentials are encrypted server-side and never stored in the browser.",
     );
     this.name = "ApiUnavailableError";
   }
@@ -32,12 +37,38 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Whether an API is reachable.
+ *
+ * Cannot be answered from configuration alone: same-origin deploys have no
+ * origin to check, and a configured origin may still be down. So probe once
+ * and cache the answer.
+ */
+let apiAvailable: boolean | null = null;
+
+export async function probeApi(): Promise<boolean> {
+  if (apiAvailable !== null) return apiAvailable;
+  try {
+    const response = await fetch(`${API_ORIGIN}/health`, {
+      credentials: "include",
+    });
+    const body = (await response.json()) as { ok?: boolean };
+    apiAvailable = response.ok && body.ok === true;
+  } catch {
+    // Network failure, or the dev server answered with HTML that will not
+    // parse as JSON — either way there is no API here.
+    apiAvailable = false;
+  }
+  return apiAvailable;
+}
+
+/** Last known availability, without triggering a probe. */
 export function isApiConfigured(): boolean {
-  return API_ORIGIN !== "";
+  return apiAvailable !== false;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  if (!isApiConfigured()) throw new ApiUnavailableError();
+  if (apiAvailable === false) throw new ApiUnavailableError();
 
   let response: Response;
   try {
@@ -61,7 +92,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
 
-  return (await response.json()) as T;
+  try {
+    return (await response.json()) as T;
+  } catch {
+    // A non-JSON 200 means something other than the API answered — typically
+    // a dev server returning index.html for an unmatched path.
+    apiAvailable = false;
+    throw new ApiUnavailableError();
+  }
 }
 
 export async function fetchConnections(): Promise<Connection[]> {
@@ -96,7 +134,7 @@ export async function disconnect(broker: string): Promise<void> {
 
 /** OAuth brokers redirect the whole window rather than posting credentials. */
 export function beginOauth(broker: string): void {
-  if (!isApiConfigured()) throw new ApiUnavailableError();
+  if (apiAvailable === false) throw new ApiUnavailableError();
   window.location.href = `${API_ORIGIN}/connect/${broker}`;
 }
 

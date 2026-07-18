@@ -190,8 +190,9 @@ npm run deploy --workspace=api      # Worker
 npm run build --workspace=web       # then point Cloudflare Pages at web/dist
 ```
 
-Set `APP_ORIGIN` and `API_ORIGIN` in `api/wrangler.toml` to your real origins
-before deploying — they drive CORS and every OAuth redirect URI.
+Set `APP_ORIGIN` and `API_ORIGIN` in `wrangler.toml` to your Worker's URL.
+With the single-origin setup both are the same value, and they drive every
+OAuth redirect URI.
 
 ---
 

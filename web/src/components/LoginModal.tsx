@@ -8,15 +8,17 @@
  */
 
 import { useState } from "react";
-import { ApiUnavailableError, isApiConfigured, requestMagicLink } from "../api.js";
+import { ApiUnavailableError, requestMagicLink } from "../api.js";
 
 interface Props {
+  /** Whether the API answered a health probe. */
+  apiUp: boolean;
   onClose: () => void;
 }
 
 type Stage = "form" | "sent";
 
-export function LoginModal({ onClose }: Props) {
+export function LoginModal({ apiUp, onClose }: Props) {
   const [email, setEmail] = useState("");
   const [stage, setStage] = useState<Stage>("form");
   const [devLink, setDevLink] = useState<string | null>(null);
@@ -59,10 +61,10 @@ export function LoginModal({ onClose }: Props) {
         </div>
 
         <div className="modal-body">
-          {!isApiConfigured() && (
+          {!apiUp && (
             <div className="notice warn">
-              No API is configured for this build, so sign-in is unavailable.
-              The dashboard still works on local data.
+              The API isn't reachable, so sign-in is unavailable. The
+              dashboard still works fully on local data.
             </div>
           )}
 
@@ -131,7 +133,7 @@ export function LoginModal({ onClose }: Props) {
               <button
                 className="primary"
                 onClick={() => void submit()}
-                disabled={busy || !isApiConfigured()}
+                disabled={busy || !apiUp}
               >
                 {busy ? "Sending…" : "Send link"}
               </button>

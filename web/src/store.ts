@@ -20,7 +20,7 @@ import {
   fetchHistory,
   fetchSession,
   fetchSpot,
-  isApiConfigured,
+  probeApi,
   logout as apiLogout,
   type SessionUser,
 } from "./api.js";
@@ -58,14 +58,16 @@ export type AuthState =
   | { status: "authenticated"; user: SessionUser };
 
 export function useAuth() {
-  const [state, setState] = useState<AuthState>(
-    // With no API there is nothing to check, so skip straight to anonymous
-    // rather than flashing a loading state that can never resolve.
-    isApiConfigured() ? { status: "checking" } : { status: "anonymous" },
-  );
+  const [state, setState] = useState<AuthState>({ status: "checking" });
+  const [apiUp, setApiUp] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!isApiConfigured()) {
+    // Probe before asking about a session: same-origin deploys have no
+    // origin to inspect, so reachability has to be observed, not configured.
+    const available = await probeApi();
+    setApiUp(available);
+
+    if (!available) {
       setState({ status: "anonymous" });
       return;
     }
@@ -93,7 +95,7 @@ export function useAuth() {
     setState({ status: "anonymous" });
   }, []);
 
-  return { auth: state, refreshAuth: refresh, signOut };
+  return { auth: state, apiUp, refreshAuth: refresh, signOut };
 }
 
 // ------------------------------------------------------------------- book
