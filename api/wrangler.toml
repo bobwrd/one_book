@@ -14,9 +14,18 @@ compatibility_flags = ["nodejs_compat"]
 # Deliberately a single environment: a half-configured [env.production] block
 # makes it far too easy to deploy the wrong origins without noticing.
 # ---------------------------------------------------------------------------
+# workers.dev gives this Worker its public URL. Preview URLs are switched off
+# deliberately: they mint extra public hostnames for a service that holds
+# encrypted brokerage tokens, and OAuth redirect URIs are registered per-origin
+# so a preview host could never complete a broker connection anyway.
+workers_dev = true
+preview_urls = false
+
 [vars]
+# APP_ORIGIN must match wherever the dashboard is actually served. It is the
+# CORS allowlist, so a stale value here silently blocks the real frontend.
 APP_ORIGIN = "http://localhost:5173"
-API_ORIGIN = "http://localhost:8787"
+API_ORIGIN = "https://onebook-api.arinjain-mail.workers.dev"
 MARKET_DATA_PROVIDER = "alphavantage"
 # Logs magic links to the console instead of emailing them. Set to "0" once
 # email delivery is wired up.
