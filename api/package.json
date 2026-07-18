@@ -1,0 +1,23 @@
+{
+  "name": "api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "db:local": "wrangler d1 execute onebook --local --file=./src/schema.sql",
+    "db:remote": "wrangler d1 execute onebook --remote --file=./src/schema.sql"
+  },
+  "dependencies": {
+    "hono": "^4.6.14",
+    "@onebook/finance": "*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "wrangler": "^3.99.0",
+    "vitest": "^2.1.8"
+  }
+}
