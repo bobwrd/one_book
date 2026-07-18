@@ -23,7 +23,6 @@ import {
   shockMarket,
   type MarketSnapshot,
   type PositionExposure,
-  type PriceSeries,
   type Shock,
 } from "@onebook/finance";
 import { PositionRail } from "./components/PositionRail.js";
@@ -37,7 +36,15 @@ import {
 } from "./components/ConnectModal.js";
 import { PayoffChart } from "./charts/PayoffChart.js";
 import { CorrelationHeatmap } from "./charts/CorrelationHeatmap.js";
-import { usePositions, useSpotPrices, useTheme } from "./store.js";
+import {
+  useAuth,
+  useBook,
+  useDefaultPortfolio,
+  usePriceHistory,
+  useSpotPrices,
+  useTheme,
+} from "./store.js";
+import { LoginModal } from "./components/LoginModal.js";
 import {
   ApiUnavailableError,
   connectWithKeys,
@@ -51,23 +58,28 @@ import {
   formatUsd,
   todayIso,
 } from "./format.js";
-import { syntheticHistory } from "./syntheticHistory.js";
 
 const NO_SHOCK: Shock = { priceShock: 0, volShock: 0, daysForward: 0 };
 
 export function App() {
-  const { positions, add, addMany, remove, clear } = usePositions();
+  const { auth, refreshAuth, signOut } = useAuth();
+  const portfolioId = useDefaultPortfolio(auth);
+  const { positions, isSample, loading, error: bookError, add, addMany, remove, clear } =
+    useBook(auth, portfolioId);
+
   const tickers = useMemo(
     () => [...new Set(positions.map((p) => p.ticker))].sort(),
     [positions],
   );
-  const { spot, setPrice } = useSpotPrices(tickers);
+  const { spot, setPrice, live } = useSpotPrices(tickers, auth, portfolioId);
+  const { history, isReal } = usePriceHistory(tickers, spot, auth, portfolioId);
 
   const [shock, setShock] = useState<Shock>(NO_SHOCK);
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showPrices, setShowPrices] = useState(false);
   const [showConnect, setShowConnect] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [connectError, setConnectError] = useState<string | null>(null);
   const { theme, toggleTheme } = useTheme();
@@ -114,16 +126,6 @@ export function App() {
       asOf: todayIso(),
     }),
     [spot],
-  );
-
-  /**
-   * Phase 1 has no market-data feed, so correlation and VaR run on a
-   * deterministic synthetic history seeded per ticker. Phase 2 swaps this for
-   * real closes from the API without changing anything downstream.
-   */
-  const history: PriceSeries[] = useMemo(
-    () => tickers.map((ticker) => syntheticHistory(ticker, spot[ticker] ?? 100)),
-    [tickers.join(","), tickers.map((t) => spot[t]).join(",")],
   );
 
   // The unshocked book: the baseline every delta chip is measured against.
@@ -228,10 +230,23 @@ export function App() {
           {positions.length} pos · {tickers.length} sym
         </span>
         <div className="topbar-spacer" />
-        <button onClick={() => setShowConnect(true)}>
-          Accounts
-          {connections.length > 0 && ` · ${connections.length}`}
-        </button>
+        {auth.status === "authenticated" ? (
+          <>
+            <span className="topbar-meta">{auth.user.email}</span>
+            <button onClick={() => setShowConnect(true)}>
+              Accounts
+              {connections.length > 0 && ` · ${connections.length}`}
+            </button>
+            <button onClick={() => void signOut()}>Sign out</button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => setShowConnect(true)}>Accounts</button>
+            <button className="primary" onClick={() => setShowLogin(true)}>
+              Sign in
+            </button>
+          </>
+        )}
         <button onClick={() => setShowPrices(true)}>Prices</button>
         <button
           onClick={toggleTheme}
@@ -264,7 +279,34 @@ export function App() {
         <div className="analysis">
           <ScenarioBar shock={shock} onChange={setShock} />
 
-          {positions.length === 0 ? (
+          {(isSample || bookError || (positions.length > 0 && !isReal)) && (
+            <div style={{ padding: "0 var(--s4)", paddingTop: "var(--s3)" }}>
+              {bookError && <div className="notice error">{bookError}</div>}
+
+              {isSample && (
+                <div className="notice warn">
+                  <strong>Sample book.</strong> These are illustrative
+                  positions, not yours — a covered call on AAPL, a protective
+                  put on NVDA, and a short SPY strangle. Drag the price slider
+                  to see how they move together. Adding your own position
+                  replaces them.
+                </div>
+              )}
+
+              {positions.length > 0 && !isReal && !isSample && (
+                <div className="notice warn">
+                  Correlation and VaR use generated price history, not real
+                  market data. Sign in to compute them from actual closes.
+                </div>
+              )}
+            </div>
+          )}
+
+          {loading ? (
+            <div className="empty" style={{ padding: "4rem 1rem" }}>
+              <b>Loading your book…</b>
+            </div>
+          ) : positions.length === 0 ? (
             <div className="empty" style={{ padding: "4rem 1rem" }}>
               <b>Your book is empty</b>
               Add a stock and write an option against it, then drag the price
@@ -456,6 +498,14 @@ export function App() {
           onClose={() => setShowImport(false)}
         />
       )}
+      {showLogin && (
+        <LoginModal
+          onClose={() => {
+            setShowLogin(false);
+            void refreshAuth();
+          }}
+        />
+      )}
       {showConnect && (
         <ConnectModal
           connections={connections}
@@ -475,6 +525,7 @@ export function App() {
       {showPrices && (
         <PricesModal
           tickers={tickers}
+          live={live}
           spot={spot}
           onSet={setPrice}
           onClose={() => setShowPrices(false)}
@@ -486,11 +537,13 @@ export function App() {
 
 function PricesModal({
   tickers,
+  live,
   spot,
   onSet,
   onClose,
 }: {
   tickers: string[];
+  live: boolean;
   spot: Record<string, number>;
   onSet: (ticker: string, price: number) => void;
   onClose: () => void;
@@ -506,8 +559,9 @@ function PricesModal({
         </div>
         <div className="modal-body">
         <p className="faint" style={{ fontSize: "0.625rem", marginTop: 0 }}>
-          Prices are entered by hand in this build. Connecting the API replaces
-          these with live quotes.
+          {live
+            ? "Live quotes from your connected data source. Edits apply to this session only."
+            : "Entered by hand. Sign in to pull live quotes automatically."}
         </p>
         {tickers.length === 0 ? (
           <div className="empty">Add a position first.</div>

@@ -8,6 +8,7 @@
  * the backend, because broker credentials must never live in the browser.
  */
 
+import type { PriceSeries } from "@onebook/finance";
 import type { Connection } from "./components/ConnectModal.js";
 
 const API_ORIGIN = import.meta.env.VITE_API_ORIGIN ?? "";
@@ -97,4 +98,143 @@ export async function disconnect(broker: string): Promise<void> {
 export function beginOauth(broker: string): void {
   if (!isApiConfigured()) throw new ApiUnavailableError();
   window.location.href = `${API_ORIGIN}/connect/${broker}`;
+}
+
+// ------------------------------------------------------------------ auth
+
+export interface SessionUser {
+  userId: string;
+  email: string;
+}
+
+/** Current session, or null when signed out. Never throws on 401. */
+export async function fetchSession(): Promise<SessionUser | null> {
+  try {
+    return await request<SessionUser>("/auth/me");
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return null;
+    throw err;
+  }
+}
+
+/**
+ * Request a magic link. In dev the Worker returns the link directly rather
+ * than emailing it, so the flow is testable before email delivery exists.
+ */
+export async function requestMagicLink(
+  email: string,
+): Promise<{ devLink?: string }> {
+  return request("/auth/request", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function logout(): Promise<void> {
+  await request("/auth/logout", { method: "POST" });
+}
+
+// ------------------------------------------------------------ portfolios
+
+export interface PortfolioSummary {
+  id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export async function fetchPortfolios(): Promise<PortfolioSummary[]> {
+  const data = await request<{ portfolios: PortfolioSummary[] }>("/portfolios");
+  return data.portfolios;
+}
+
+export async function createPortfolio(name: string): Promise<PortfolioSummary> {
+  return request("/portfolios", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export interface ApiPosition {
+  id: string;
+  type: "stock" | "option";
+  ticker: string;
+  quantity: number;
+  costBasis: number;
+  strike?: number;
+  expiry?: string;
+  right?: "call" | "put";
+  contractMultiplier?: number;
+  iv?: number;
+  ivIsEstimate?: boolean;
+  source?: string;
+}
+
+export async function fetchPortfolio(
+  id: string,
+): Promise<{ id: string; name: string; positions: ApiPosition[] }> {
+  return request(`/portfolios/${id}`);
+}
+
+export async function addPositions(
+  portfolioId: string,
+  positions: unknown[],
+): Promise<{ ids: string[] }> {
+  return request(`/portfolios/${portfolioId}/positions`, {
+    method: "POST",
+    body: JSON.stringify({ positions }),
+  });
+}
+
+export async function deletePosition(
+  portfolioId: string,
+  positionId: string,
+): Promise<void> {
+  await request(`/portfolios/${portfolioId}/positions/${positionId}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Server-side analysis over real cached market data. Returns the same shape
+ * the dashboard computes locally, so the two modes render identically.
+ */
+export async function fetchAnalysis(portfolioId: string): Promise<{
+  empty?: boolean;
+  exposure?: { byTicker: Record<string, number> };
+  dataQuality?: {
+    staleQuotes: string[];
+    staleHistory: string[];
+    missingPrices: string[];
+    asOf: string;
+  };
+}> {
+  return request(`/portfolios/${portfolioId}/analysis`);
+}
+
+/** Spot prices used for the most recent analysis. */
+export async function fetchSpot(
+  portfolioId: string,
+): Promise<Record<string, number>> {
+  const analysis = await request<{ spot?: Record<string, number> }>(
+    `/portfolios/${portfolioId}/analysis`,
+  );
+  return analysis.spot ?? {};
+}
+
+export async function syncBroker(
+  portfolioId: string,
+  broker: string,
+): Promise<{ imported: number }> {
+  return request(`/portfolios/${portfolioId}/sync`, {
+    method: "POST",
+    body: JSON.stringify({ broker }),
+  });
+}
+
+/** Real cached closes for a portfolio's underlyings. */
+export async function fetchHistory(
+  portfolioId: string,
+): Promise<{ series: PriceSeries[]; stale: string[] }> {
+  return request(`/portfolios/${portfolioId}/history`);
 }

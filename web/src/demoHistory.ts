@@ -23,7 +23,7 @@ function seedFrom(ticker: string): number {
   return hash >>> 0;
 }
 
-export function syntheticHistory(
+export function demoHistory(
   ticker: string,
   currentPrice: number,
 ): PriceSeries {

@@ -381,6 +381,42 @@ authed.get("/portfolios/:id/analysis", async (c) => {
   }
 });
 
+/**
+ * Raw price history for a portfolio's underlyings.
+ *
+ * The scenario sliders must recompute in under a frame, which rules out a
+ * round trip per drag. The client fetches these series once and does every
+ * shock locally, so the interaction stays instant while the data stays real.
+ */
+authed.get("/portfolios/:id/history", async (c) => {
+  const session = c.get("session");
+  const portfolio = await ownedPortfolio(c.env, session, c.req.param("id"));
+  if (!portfolio) return c.json({ error: "Portfolio not found." }, 404);
+
+  const { results } = await c.env.DB.prepare(
+    "SELECT DISTINCT ticker FROM positions WHERE portfolio_id = ?",
+  )
+    .bind(portfolio.id)
+    .all<{ ticker: string }>();
+
+  const series = [];
+  const stale: string[] = [];
+
+  for (const row of results ?? []) {
+    try {
+      const result = await getPriceHistory(c.env, row.ticker);
+      if (result.series.closes.length >= 2) series.push(result.series);
+      if (result.stale) stale.push(row.ticker);
+    } catch {
+      // A ticker without history drops out of correlation but still carries
+      // exposure and Greeks, so this is not fatal.
+      stale.push(row.ticker);
+    }
+  }
+
+  return c.json({ series, stale });
+});
+
 // ------------------------------------------------------------- brokers
 
 authed.get("/brokers", (c) => {

@@ -86,6 +86,9 @@ export function analyzePortfolio(
   return {
     asOf: market.asOf,
     riskFreeRate,
+    // Echoed back so the client never has to reverse-engineer spot from
+    // notional/share ratios.
+    spot,
     exposure: {
       byTicker: exposure.byTicker,
       notionalByTicker: exposure.notionalByTicker,

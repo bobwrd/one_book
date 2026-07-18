@@ -96,8 +96,29 @@ afterEach(() => {
 });
 
 describe("OneBook dashboard", () => {
-  it("mounts and shows the empty state", () => {
+  it("seeds a sample book on first load and labels it as illustrative", () => {
     render(<App />);
+    // Demo numbers must never be presented as the user's own positions.
+    expect(screen.getByText(/Sample book/)).toBeTruthy();
+    expect(railTickers()).toContain("AAPL");
+    expect(railTickers()).toContain("SPY");
+  });
+
+  it("replaces the sample book when a real position is added", () => {
+    render(<App />);
+    expect(screen.getByText(/Sample book/)).toBeTruthy();
+
+    addStock("TSTA", "100");
+
+    // Mixing real positions into sample data would corrupt every number.
+    expect(screen.queryByText(/Sample book/)).toBeNull();
+    expect(railTickers()).toEqual(["TSTA"]);
+  });
+
+  it("shows the empty state once the book is cleared", () => {
+    render(<App />);
+    addStock("TSTA", "100");
+    fireEvent.click(screen.getByLabelText("Remove TSTA position"));
     expect(screen.getByText("Your book is empty")).toBeTruthy();
   });
 
@@ -110,9 +131,9 @@ describe("OneBook dashboard", () => {
 
   it("accepts a hand-entered stock position", () => {
     render(<App />);
-    addStock("AAPL", "100");
+    addStock("TSTA", "100");
 
-    expect(railTickers()).toEqual(["AAPL"]);
+    expect(railTickers()).toEqual(["TSTA"]);
     expect(screen.getByText("1 pos · 1 sym")).toBeTruthy();
     // Stock delta-equivalent is its own share count.
     expect(tileValue("Net delta")).toBe("100.0");
@@ -120,9 +141,9 @@ describe("OneBook dashboard", () => {
 
   it("accepts a mixed stock and option book", () => {
     render(<App />);
-    addStock("AAPL", "100");
+    addStock("TSTA", "100");
     addOption({
-      ticker: "AAPL",
+      ticker: "TSTA",
       contracts: "-1",
       right: "call",
       strike: "100",
@@ -134,11 +155,11 @@ describe("OneBook dashboard", () => {
 
   it("nets a covered call down against its stock — the core insight", () => {
     render(<App />);
-    addStock("AAPL", "100");
+    addStock("TSTA", "100");
     const stockOnlyDelta = Number(tileValue("Net delta"));
 
     addOption({
-      ticker: "AAPL",
+      ticker: "TSTA",
       contracts: "-1",
       right: "call",
       strike: "100",
@@ -153,9 +174,9 @@ describe("OneBook dashboard", () => {
 
   it("moves P&L, Greeks, and VaR together when the price slider is dragged", () => {
     render(<App />);
-    addStock("AAPL", "100");
+    addStock("TSTA", "100");
     addOption({
-      ticker: "AAPL",
+      ticker: "TSTA",
       contracts: "2",
       right: "call",
       strike: "100",
@@ -190,7 +211,7 @@ describe("OneBook dashboard", () => {
 
   it("shows a loss on a downward shock for a long book", () => {
     render(<App />);
-    addStock("AAPL", "100");
+    addStock("TSTA", "100");
 
     fireEvent.change(
       screen.getByLabelText("Underlying price shock, percent"),
@@ -203,7 +224,7 @@ describe("OneBook dashboard", () => {
   it("decays a long option book as the time slider advances", () => {
     render(<App />);
     addOption({
-      ticker: "AAPL",
+      ticker: "TSTA",
       contracts: "5",
       right: "call",
       strike: "100",
@@ -220,7 +241,7 @@ describe("OneBook dashboard", () => {
   it("gains on a long option book when the vol slider rises", () => {
     render(<App />);
     addOption({
-      ticker: "AAPL",
+      ticker: "TSTA",
       contracts: "5",
       right: "call",
       strike: "100",
@@ -237,7 +258,7 @@ describe("OneBook dashboard", () => {
 
   it("resets every slider back to spot", () => {
     render(<App />);
-    addStock("AAPL", "100");
+    addStock("TSTA", "100");
 
     fireEvent.change(
       screen.getByLabelText("Underlying price shock, percent"),
@@ -251,7 +272,7 @@ describe("OneBook dashboard", () => {
 
   it("shows the delta-equivalent share count on every position row", () => {
     render(<App />);
-    addStock("AAPL", "100");
+    addStock("TSTA", "100");
 
     const rows = document.querySelectorAll(".position-eq");
     expect(rows.length).toBe(1);
@@ -262,7 +283,7 @@ describe("OneBook dashboard", () => {
   it("marks hand-entered implied vol as an estimate", () => {
     render(<App />);
     addOption({
-      ticker: "AAPL",
+      ticker: "TSTA",
       contracts: "1",
       right: "call",
       strike: "100",
@@ -277,7 +298,7 @@ describe("OneBook dashboard", () => {
   it("flags a net short gamma book in the callouts", () => {
     render(<App />);
     addOption({
-      ticker: "AAPL",
+      ticker: "TSTA",
       contracts: "-20",
       right: "call",
       strike: "100",
@@ -289,10 +310,10 @@ describe("OneBook dashboard", () => {
 
   it("renders a correlation heatmap once there are two underlyings", () => {
     render(<App />);
-    addStock("AAPL", "100");
+    addStock("TSTA", "100");
     expect(screen.getAllByText("Not enough underlyings").length).toBeGreaterThan(0);
 
-    addStock("MSFT", "50");
+    addStock("TSTB", "50");
     const heatmap = screen.getByLabelText(
       "Correlation matrix across underlyings",
     );
@@ -302,27 +323,28 @@ describe("OneBook dashboard", () => {
 
   it("removes a position", () => {
     render(<App />);
-    addStock("AAPL", "100");
+    addStock("TSTA", "100");
     expect(screen.getByText("1 pos · 1 sym")).toBeTruthy();
 
-    fireEvent.click(screen.getByLabelText("Remove AAPL position"));
+    fireEvent.click(screen.getByLabelText("Remove TSTA position"));
     expect(screen.getByText("Your book is empty")).toBeTruthy();
   });
 
   it("persists the book across a remount", () => {
     const first = render(<App />);
-    addStock("AAPL", "100");
+    addStock("TSTA", "100");
     first.unmount();
 
     render(<App />);
-    expect(railTickers()).toEqual(["AAPL"]);
+    expect(railTickers()).toEqual(["TSTA"]);
     expect(screen.getByText("1 pos · 1 sym")).toBeTruthy();
   });
 
   it("survives corrupt localStorage rather than failing to mount", () => {
     localStorage.setItem("onebook.positions.v1", "{not json");
     render(<App />);
-    expect(screen.getByText("Your book is empty")).toBeTruthy();
+    // Falls back to the sample book instead of crashing.
+    expect(screen.getByText(/Sample book/)).toBeTruthy();
   });
 });
 
