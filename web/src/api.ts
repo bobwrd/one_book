@@ -277,6 +277,7 @@ export async function fetchHistory(
   series: PriceSeries[];
   stale: string[];
   failures?: { ticker: string; reason: string }[];
+  feed?: string | null;
 }> {
   return request(`/portfolios/${portfolioId}/history`);
 }

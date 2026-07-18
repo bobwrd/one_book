@@ -72,7 +72,7 @@ export function App() {
     [positions],
   );
   const { spot, setPrice, live } = useSpotPrices(tickers, auth, portfolioId);
-  const { history, isReal, error: historyError } = usePriceHistory(
+  const { history, isReal, error: historyError, feed } = usePriceHistory(
     tickers,
     spot,
     auth,
@@ -426,10 +426,31 @@ export function App() {
                 <div className="section">
                   <h3 className="section-title">Correlation</h3>
                   {baseline?.correlation ? (
-                    <CorrelationHeatmap
-                      tickers={baseline.correlation.tickers}
-                      values={baseline.correlation.values}
-                    />
+                    <>
+                      <CorrelationHeatmap
+                        tickers={baseline.correlation.tickers}
+                        values={baseline.correlation.values}
+                      />
+                      {isReal && feed === "iex" && (
+                        <p
+                          className="faint"
+                          style={{
+                            fontSize: "0.625rem",
+                            lineHeight: 1.5,
+                            marginBottom: 0,
+                          }}
+                        >
+                          Built from the IEX feed, whose daily closes are the
+                          last print on a single venue rather than a
+                          consolidated 4pm close. Because those prints land at
+                          slightly different moments per symbol, measured
+                          correlation is biased low — and portfolio volatility
+                          and VaR with it. Treat these as a floor on risk, not
+                          an estimate. A consolidated-tape feed removes the
+                          bias.
+                        </p>
+                      )}
+                    </>
                   ) : (
                     <div className="empty">
                       <b>Not enough underlyings</b>

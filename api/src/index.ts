@@ -31,7 +31,12 @@ import {
   type BrokerTokens,
   type NormalizedPosition,
 } from "./brokers/index.js";
-import { getPriceHistory, getQuotes, MarketDataError } from "./marketData.js";
+import {
+  getPriceHistory,
+  getProvider,
+  getQuotes,
+  MarketDataError,
+} from "./marketData.js";
 import { analyzePortfolio } from "./analysis.js";
 import type { Position } from "@onebook/finance";
 
@@ -371,6 +376,14 @@ authed.get("/portfolios/:id/analysis", async (c) => {
         staleHistory: historyStale,
         missingPrices: quotes.missing,
         asOf: new Date().toISOString(),
+        provider: getProvider(c.env)?.name ?? null,
+        // Which feed produced the history. Callers need this: single-venue
+        // feeds bias correlation downward, which biases portfolio risk down
+        // with it.
+        feed:
+          (getProvider(c.env)?.name === "alpaca"
+            ? (c.env.ALPACA_DATA_FEED ?? "iex")
+            : null),
       },
     });
   } catch (err) {
@@ -421,7 +434,15 @@ authed.get("/portfolios/:id/history", async (c) => {
     }
   }
 
-  return c.json({ series, stale, failures });
+  return c.json({
+    series,
+    stale,
+    failures,
+    feed:
+      getProvider(c.env)?.name === "alpaca"
+        ? (c.env.ALPACA_DATA_FEED ?? "iex")
+        : null,
+  });
 });
 
 // ------------------------------------------------------------- brokers
