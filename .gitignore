@@ -7,3 +7,6 @@ dist/
 .env
 .env.local
 coverage/
+
+# Planning notes, kept local
+ROADMAP.md
