@@ -200,17 +200,23 @@ class AlpacaProvider implements MarketDataProvider {
 
     const response = await fetch(url, { headers: this.headers() });
 
+    // Alpaca tags every response with X-Request-ID and asks for it in support
+    // requests. It cannot be looked up after the fact, so capture it on the
+    // failure path where it is the only thing that makes a report actionable.
+    const requestId = response.headers.get("X-Request-ID");
+    const trace = requestId ? ` (Alpaca request ${requestId})` : "";
+
     if (response.status === 401 || response.status === 403) {
       throw new MarketDataError(
-        "Alpaca rejected the market-data credentials. Check ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY, and that your plan covers the requested feed.",
+        `Alpaca rejected the market-data credentials. Check ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY, and that your plan covers the "${this.feed}" feed.${trace}`,
       );
     }
     if (response.status === 429) {
-      throw new MarketDataError("Alpaca rate limit reached.", true);
+      throw new MarketDataError(`Alpaca rate limit reached.${trace}`, true);
     }
     if (!response.ok) {
       throw new MarketDataError(
-        `Alpaca returned ${response.status} for ${path}.`,
+        `Alpaca returned ${response.status} for ${path}.${trace}`,
         response.status >= 500,
       );
     }

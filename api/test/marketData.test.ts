@@ -214,3 +214,38 @@ describe("Alpaca quotes", () => {
     expect(calls).toBe(0);
   });
 });
+
+describe("Alpaca error diagnostics", () => {
+  it("surfaces the X-Request-ID on failures", async () => {
+    // Alpaca asks for this in support requests and it cannot be looked up
+    // afterwards, so an error without it is effectively unreportable.
+    mockFetch(
+      () =>
+        new Response(JSON.stringify({}), {
+          status: 403,
+          headers: { "X-Request-ID": "0d29ba8d9a51ee0eb4e7bbaa9acff223" },
+        }),
+    );
+
+    await expect(
+      getProvider(env(ALPACA_KEYS))!.fetchDailyCloses("AAPL"),
+    ).rejects.toThrow(/0d29ba8d9a51ee0eb4e7bbaa9acff223/);
+  });
+
+  it("names the feed in a credentials error", async () => {
+    // A rejected 'sip' request usually means no paid plan, not a bad key.
+    mockFetch(() => json({}, 403));
+    await expect(
+      getProvider(
+        env({ ...ALPACA_KEYS, ALPACA_DATA_FEED: "sip" }),
+      )!.fetchDailyCloses("AAPL"),
+    ).rejects.toThrow(/"sip" feed/);
+  });
+
+  it("still errors cleanly when no request id is present", async () => {
+    mockFetch(() => json({}, 500));
+    await expect(
+      getProvider(env(ALPACA_KEYS))!.fetchDailyCloses("AAPL"),
+    ).rejects.toMatchObject({ retryable: true });
+  });
+});

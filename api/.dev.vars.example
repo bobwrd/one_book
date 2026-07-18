@@ -1,0 +1,12 @@
+# Local dev secrets. Copy to api/.dev.vars (gitignored) and fill in.
+# Production secrets are NOT read from here — set those with:
+#   npx wrangler secret put <NAME> --config api/wrangler.toml
+
+# From app.alpaca.markets → dashboard → API Keys (right sidebar) → Generate New Keys.
+# Paper keys work fine; market data does not care whether the account is paper.
+ALPACA_API_KEY_ID=
+ALPACA_API_SECRET_KEY=
+
+# openssl rand -base64 32
+TOKEN_ENCRYPTION_KEY=
+STATE_SIGNING_SECRET=
