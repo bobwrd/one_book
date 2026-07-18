@@ -1,4 +1,4 @@
-# OneBook — Engineering Brief for Claude Code
+# OneBook — Engineering Brief
 
 **Repo:** https://github.com/bobwrd/one_book (MIT, public, `main`)
 
