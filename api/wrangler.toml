@@ -27,13 +27,13 @@ DEV_LOG_MAGIC_LINKS = "1"
 [[d1_databases]]
 binding = "DB"
 database_name = "onebook"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "0f5b2c3b-8f95-457b-ba5d-66aafaf418db"
 
 # Create with:  npx wrangler kv namespace create onebook-kv
 # Paste the returned id below.
 [[kv_namespaces]]
 binding = "KV"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = "4eaf9f7d6f254d4c879aa7725d1111da"
 
 # Secrets are never committed. Set each with `npx wrangler secret put <NAME>`
 # (or in the Cloudflare dashboard under Settings → Variables and Secrets):

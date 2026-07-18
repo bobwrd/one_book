@@ -168,6 +168,26 @@ are meant to be committed.
 
 #### From your machine
 
+Every Wrangler command must be told where the config lives, since it sits in
+`api/` rather than the repo root. Root-level scripts wrap that for you:
+
+```bash
+npm run deploy:api                 # deploy the Worker
+npm run secret -- TOKEN_ENCRYPTION_KEY   # set a secret
+npm run secret:list                # what's already set
+npm run db:remote                  # apply the schema
+npm run tail                       # live logs
+```
+
+Generate secrets straight into Wrangler so the value never lands in your
+shell history or scrollback:
+
+```bash
+openssl rand -base64 32 | npx wrangler secret put TOKEN_ENCRYPTION_KEY --config api/wrangler.toml
+openssl rand -base64 32 | npx wrangler secret put STATE_SIGNING_SECRET --config api/wrangler.toml
+```
+
+
 
 ```bash
 npm run deploy --workspace=api      # Worker
