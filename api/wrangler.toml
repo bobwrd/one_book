@@ -3,35 +3,45 @@ main = "src/index.ts"
 compatibility_date = "2024-12-18"
 compatibility_flags = ["nodejs_compat"]
 
-# Public origins. Override these for your own deployment.
+# ---------------------------------------------------------------------------
+# Public origins. EDIT THESE before deploying — they drive CORS and every
+# OAuth redirect URI, so leaving localhost here means a deployed Worker will
+# reject your real frontend.
+#
+#   APP_ORIGIN  where the dashboard is served (Cloudflare Pages)
+#   API_ORIGIN  where this Worker is served
+#
+# Deliberately a single environment: a half-configured [env.production] block
+# makes it far too easy to deploy the wrong origins without noticing.
+# ---------------------------------------------------------------------------
 [vars]
 APP_ORIGIN = "http://localhost:5173"
 API_ORIGIN = "http://localhost:8787"
 MARKET_DATA_PROVIDER = "alphavantage"
+# Logs magic links to the console instead of emailing them. Set to "0" once
+# email delivery is wired up.
 DEV_LOG_MAGIC_LINKS = "1"
 
-# Create with: wrangler d1 create onebook
-# then paste the returned database_id here.
+# Create with:  npx wrangler d1 create onebook
+# Paste the returned database_id below.
 [[d1_databases]]
 binding = "DB"
 database_name = "onebook"
 database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 
-# Create with: wrangler kv namespace create onebook-kv
+# Create with:  npx wrangler kv namespace create onebook-kv
+# Paste the returned id below.
 [[kv_namespaces]]
 binding = "KV"
 id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
 
-# Secrets are never committed. Set each with `wrangler secret put <NAME>`:
+# Secrets are never committed. Set each with `npx wrangler secret put <NAME>`
+# (or in the Cloudflare dashboard under Settings → Variables and Secrets):
+#
 #   TOKEN_ENCRYPTION_KEY    openssl rand -base64 32
 #   STATE_SIGNING_SECRET    openssl rand -base64 32
-#   ALPHA_VANTAGE_API_KEY   (or FINNHUB_API_KEY)
+#   ALPHA_VANTAGE_API_KEY   free key from alphavantage.co
 #   SCHWAB_CLIENT_ID / SCHWAB_CLIENT_SECRET
 #   TRADIER_CLIENT_ID / TRADIER_CLIENT_SECRET
-# For local dev put the same names in api/.dev.vars (gitignored).
-
-[env.production.vars]
-APP_ORIGIN = "https://onebook.pages.dev"
-API_ORIGIN = "https://onebook-api.workers.dev"
-MARKET_DATA_PROVIDER = "alphavantage"
-DEV_LOG_MAGIC_LINKS = "0"
+#
+# For local dev, put the same names in api/.dev.vars (gitignored).

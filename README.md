@@ -147,6 +147,28 @@ only in Worker env — a D1 leak alone exposes no brokerage credentials.
 
 ### 3. Deploy
 
+#### From the Cloudflare dashboard (Workers Builds)
+
+This is a **monorepo**, so the defaults do not work — Cloudflare runs
+`npx wrangler deploy` at the repo root, where there is no Wrangler config.
+Set these in the Worker's *Settings → Build* panel:
+
+| Setting | Value |
+|---|---|
+| Root directory | `/` (leave at repo root — npm workspaces need it) |
+| Build command | `npm ci` |
+| Deploy command | `npx wrangler deploy --config api/wrangler.toml` |
+
+Pointing the root directory at `/api` instead will break the install, because
+`@onebook/finance` is a workspace dependency resolved from the repo root.
+
+The deploy also fails until `api/wrangler.toml` has real D1 and KV IDs in
+place of the `REPLACE_WITH_...` placeholders. Those IDs are not secrets and
+are meant to be committed.
+
+#### From your machine
+
+
 ```bash
 npm run deploy --workspace=api      # Worker
 npm run build --workspace=web       # then point Cloudflare Pages at web/dist
