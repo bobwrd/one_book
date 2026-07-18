@@ -1,0 +1,569 @@
+/*
+ * OneBook design system (brief section 9.3).
+ *
+ * Dark-first, single accent, financial-terminal restraint. The one rule that
+ * shapes everything else: green and red are reserved exclusively for P&L, so
+ * the eye never has to disambiguate whether a color means "profit" or
+ * "category". Correlation gets its own diverging scale for that reason.
+ */
+
+:root {
+  --bg: #0b0d11;
+  --bg-raised: #12151c;
+  --bg-inset: #0e1116;
+  --border: #1e242e;
+  --border-strong: #2b3340;
+
+  --text: #e6eaf2;
+  --text-dim: #9aa4b8;
+  --text-faint: #626d82;
+
+  --accent: #5b8def;
+  --accent-dim: #2f4a80;
+
+  /* Reserved for P&L only. Never used for categorical encoding. */
+  --gain: #3ecf8e;
+  --loss: #f2555a;
+
+  /* Correlation scale: deliberately distinct from the P&L pair so a heatmap
+     never reads as a profit map. */
+  --corr-pos: #a855f7;
+  --corr-neg: #f59e0b;
+
+  --warn: #f5b942;
+  --critical: #f2555a;
+
+  --radius: 6px;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Digits must not jitter while a scenario slider is being dragged. */
+.num,
+input[type="number"],
+td.num,
+.tile-value {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.gain {
+  color: var(--gain);
+}
+.loss {
+  color: var(--loss);
+}
+
+/* ------------------------------------------------------------- layout */
+
+.app {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.brand {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  font-size: 15px;
+}
+
+.brand span {
+  color: var(--accent);
+}
+
+.topbar-spacer {
+  flex: 1;
+}
+
+.main {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.rail {
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--bg-inset);
+}
+
+.analysis {
+  overflow-y: auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The scenario bar is the flagship control and must never scroll away. */
+.scenario-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+}
+
+.slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.slider-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.slider-label .num {
+  color: var(--text);
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.panel {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  margin: 0 0 10px;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+
+.split > * {
+  border-bottom: 1px solid var(--border);
+}
+
+.split > *:first-child {
+  border-right: 1px solid var(--border);
+}
+
+/* -------------------------------------------------------------- tiles */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.tile {
+  background: var(--bg-raised);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: help;
+}
+
+.tile-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.tile-value {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.tile-delta {
+  font-size: 11px;
+  font-family: var(--mono);
+}
+
+.tile-estimate {
+  font-size: 10px;
+  color: var(--warn);
+}
+
+/* ---------------------------------------------------------- positions */
+
+.position-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 6px;
+  background: var(--bg-raised);
+  font-size: 13px;
+}
+
+.position-row:hover {
+  border-color: var(--border-strong);
+}
+
+.position-main {
+  min-width: 0;
+}
+
+.position-ticker {
+  font-weight: 600;
+}
+
+.position-detail {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: var(--mono);
+}
+
+/* The delta-equivalent readout is the core insight made visible, so it gets
+   its own emphasis on every row. */
+.position-delta-eq {
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.position-delta-eq small {
+  display: block;
+  color: var(--text-faint);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.badge.estimate {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+/* ------------------------------------------------------------ controls */
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text);
+  padding: 6px 12px;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 550;
+}
+
+button.primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+button.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-faint);
+  padding: 2px 6px;
+}
+
+button.ghost:hover:not(:disabled) {
+  color: var(--loss);
+  border-color: transparent;
+}
+
+input,
+select {
+  font: inherit;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 6px 8px;
+  width: 100%;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 3px;
+}
+
+.field {
+  margin-bottom: 8px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* -------------------------------------------------------- callouts ---- */
+
+.callout {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border-left: 2px solid var(--border-strong);
+  background: var(--bg-raised);
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.callout.warning {
+  border-left-color: var(--warn);
+}
+
+.callout.critical {
+  border-left-color: var(--critical);
+}
+
+.callout.info {
+  border-left-color: var(--accent);
+}
+
+.callout-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.callout-detail {
+  color: var(--text-dim);
+}
+
+/* ----------------------------------------------------------- states --- */
+
+.empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+.empty h3 {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin: 0 0 6px;
+}
+
+.error-banner {
+  background: rgba(242, 85, 90, 0.1);
+  border: 1px solid var(--loss);
+  color: var(--loss);
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.stale-note {
+  font-size: 10px;
+  color: var(--warn);
+}
+
+/* Wide content scrolls inside its own container; the page never scrolls
+   horizontally. */
+.scroll-x {
+  overflow-x: auto;
+}
+
+/* ---------------------------------------------------------- footer ---- */
+
+.disclaimer {
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-inset);
+  color: var(--text-faint);
+  font-size: 11px;
+  text-align: center;
+}
+
+/* ------------------------------------------------------------ modal --- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+
+.modal {
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 20px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.modal h2 {
+  margin: 0 0 14px;
+  font-size: 16px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: 6px 10px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+}
+
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 6px;
+}
+
+td {
+  padding: 4px 6px;
+  border-top: 1px solid var(--border);
+}
+
+/* ------------------------------------------------------- responsive --- */
+
+@media (max-width: 860px) {
+  .main {
+    grid-template-columns: 1fr;
+  }
+
+  .rail {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 40vh;
+  }
+
+  .scenario-bar {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .split {
+    grid-template-columns: 1fr;
+  }
+
+  .split > *:first-child {
+    border-right: none;
+  }
+}

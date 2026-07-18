@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test finance math
+        run: npm run test --workspace=@onebook/finance
+
+      - name: Test API
+        run: npx vitest run --root api
+
+      - name: Test dashboard
+        run: npx vitest run --root web
+
+      - name: Build frontend
+        run: npm run build --workspace=web
