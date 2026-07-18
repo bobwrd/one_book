@@ -72,7 +72,12 @@ export function App() {
     [positions],
   );
   const { spot, setPrice, live } = useSpotPrices(tickers, auth, portfolioId);
-  const { history, isReal } = usePriceHistory(tickers, spot, auth, portfolioId);
+  const { history, isReal, error: historyError } = usePriceHistory(
+    tickers,
+    spot,
+    auth,
+    portfolioId,
+  );
 
   const [shock, setShock] = useState<Shock>(NO_SHOCK);
   const [showAdd, setShowAdd] = useState(false);
@@ -296,7 +301,11 @@ export function App() {
               {positions.length > 0 && !isReal && !isSample && (
                 <div className="notice warn">
                   Correlation and VaR use generated price history, not real
-                  market data. Sign in to compute them from actual closes.
+                  market data.{" "}
+                  {auth.status === "authenticated"
+                    ? historyError ??
+                      "No price history is available for these symbols yet — it may still be loading, or the market-data provider returned nothing for them."
+                    : "Sign in to compute them from actual closes."}
                 </div>
               )}
             </div>

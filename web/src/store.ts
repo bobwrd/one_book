@@ -423,8 +423,9 @@ export function usePriceHistory(
   spot: Record<string, number>,
   auth: AuthState,
   portfolioId: string | null,
-): { history: PriceSeries[]; isReal: boolean } {
+): { history: PriceSeries[]; isReal: boolean; error: string | null } {
   const [remote, setRemote] = useState<PriceSeries[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const tickerKey = tickers.join(",");
 
   useEffect(() => {
@@ -436,8 +437,16 @@ export function usePriceHistory(
       try {
         const result = await fetchHistory(portfolioId);
         setRemote(result.series.length > 0 ? result.series : null);
-      } catch {
+        // Report the provider's own reason rather than leaving the user to
+        // guess why their real data did not arrive.
+        setError(
+          result.series.length === 0 && result.failures?.length
+            ? result.failures[0].reason
+            : null,
+        );
+      } catch (err) {
         setRemote(null);
+        setError(err instanceof Error ? err.message : null);
       }
     })();
   }, [auth.status, portfolioId, tickerKey]);
@@ -447,5 +456,5 @@ export function usePriceHistory(
     return tickers.map((t) => demoHistory(t, spot[t] ?? 100));
   }, [remote, tickerKey, tickers.map((t) => spot[t]).join(",")]);
 
-  return { history, isReal: remote !== null };
+  return { history, isReal: remote !== null, error };
 }

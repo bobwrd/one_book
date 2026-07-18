@@ -273,6 +273,10 @@ export async function syncBroker(
 /** Real cached closes for a portfolio's underlyings. */
 export async function fetchHistory(
   portfolioId: string,
-): Promise<{ series: PriceSeries[]; stale: string[] }> {
+): Promise<{
+  series: PriceSeries[];
+  stale: string[];
+  failures?: { ticker: string; reason: string }[];
+}> {
   return request(`/portfolios/${portfolioId}/history`);
 }

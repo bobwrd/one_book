@@ -184,6 +184,19 @@ class AlpacaProvider implements MarketDataProvider {
     private readonly feed: string = "iex",
   ) {}
 
+  /**
+   * Feed for historical bars.
+   *
+   * The two endpoints do NOT accept the same values: latest-trades supports
+   * `delayed_sip`, but bars only accepts sip/iex/boats/otc and rejects
+   * anything else outright. Mapping it down to `iex` here keeps a
+   * `delayed_sip` config working for quotes without silently breaking every
+   * correlation and VaR number.
+   */
+  private barsFeed(): string {
+    return this.feed === "delayed_sip" ? "iex" : this.feed;
+  }
+
   private headers(): HeadersInit {
     return {
       "APCA-API-KEY-ID": this.keyId,
@@ -241,7 +254,7 @@ class AlpacaProvider implements MarketDataProvider {
         start,
         limit: "10000",
         adjustment: "all",
-        feed: this.feed,
+        feed: this.barsFeed(),
       };
       if (pageToken) params.page_token = pageToken;
 

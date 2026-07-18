@@ -249,3 +249,51 @@ describe("Alpaca error diagnostics", () => {
     ).rejects.toMatchObject({ retryable: true });
   });
 });
+
+describe("feed compatibility between endpoints", () => {
+  it("maps delayed_sip down to iex for bars", async () => {
+    // Bars accept sip/iex/boats/otc only. Sending delayed_sip there is
+    // rejected outright, which silently kills correlation and VaR while
+    // quotes keep working — a confusing half-broken state.
+    let seen: URL | null = null;
+    mockFetch((url) => {
+      seen = url;
+      return json({ bars: { AAPL: [{ t: "2026-01-02T05:00:00Z", c: 1 }] } });
+    });
+
+    await getProvider(
+      env({ ...ALPACA_KEYS, ALPACA_DATA_FEED: "delayed_sip" }),
+    )!.fetchDailyCloses("AAPL");
+
+    expect(seen!.searchParams.get("feed")).toBe("iex");
+  });
+
+  it("still uses delayed_sip for latest trades", async () => {
+    // The same config value is valid here, so it must pass through unchanged.
+    let seen: URL | null = null;
+    mockFetch((url) => {
+      seen = url;
+      return json({ trades: { AAPL: { p: 1 } } });
+    });
+
+    await getProvider(
+      env({ ...ALPACA_KEYS, ALPACA_DATA_FEED: "delayed_sip" }),
+    )!.fetchQuotes!(["AAPL"]);
+
+    expect(seen!.searchParams.get("feed")).toBe("delayed_sip");
+  });
+
+  it("passes sip through to bars unchanged", async () => {
+    let seen: URL | null = null;
+    mockFetch((url) => {
+      seen = url;
+      return json({ bars: { AAPL: [{ t: "2026-01-02T05:00:00Z", c: 1 }] } });
+    });
+
+    await getProvider(
+      env({ ...ALPACA_KEYS, ALPACA_DATA_FEED: "sip" }),
+    )!.fetchDailyCloses("AAPL");
+
+    expect(seen!.searchParams.get("feed")).toBe("sip");
+  });
+});

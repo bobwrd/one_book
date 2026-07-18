@@ -401,20 +401,27 @@ authed.get("/portfolios/:id/history", async (c) => {
 
   const series = [];
   const stale: string[] = [];
+  const failures: { ticker: string; reason: string }[] = [];
 
   for (const row of results ?? []) {
     try {
       const result = await getPriceHistory(c.env, row.ticker);
       if (result.series.closes.length >= 2) series.push(result.series);
       if (result.stale) stale.push(row.ticker);
-    } catch {
+    } catch (err) {
       // A ticker without history drops out of correlation but still carries
-      // exposure and Greeks, so this is not fatal.
+      // exposure and Greeks, so this is not fatal. It is reported rather than
+      // swallowed: a silent empty series looks identical to "no data
+      // configured", which sends you debugging the wrong thing entirely.
       stale.push(row.ticker);
+      failures.push({
+        ticker: row.ticker,
+        reason: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
-  return c.json({ series, stale });
+  return c.json({ series, stale, failures });
 });
 
 // ------------------------------------------------------------- brokers
