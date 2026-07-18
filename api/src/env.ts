@@ -13,7 +13,18 @@ export interface Env {
   /** Public origin of this Worker, for OAuth redirect URIs. */
   API_ORIGIN: string;
 
+  /** "alpaca" (default), "alphavantage", or "finnhub". */
   MARKET_DATA_PROVIDER?: string;
+
+  /**
+   * Alpaca market data. Separate from any user's brokerage connection: this
+   * is the app's own data subscription, not someone's trading account.
+   */
+  ALPACA_API_KEY_ID?: string;
+  ALPACA_API_SECRET_KEY?: string;
+  /** "iex" (free tier) or "sip" (full consolidated tape, paid). */
+  ALPACA_DATA_FEED?: string;
+
   ALPHA_VANTAGE_API_KEY?: string;
   FINNHUB_API_KEY?: string;
 

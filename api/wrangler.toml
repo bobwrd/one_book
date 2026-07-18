@@ -26,7 +26,11 @@ preview_urls = false
 # CORS allowlist, so a stale value here silently blocks the real frontend.
 APP_ORIGIN = "http://localhost:5173"
 API_ORIGIN = "https://onebook-api.arinjain-mail.workers.dev"
-MARKET_DATA_PROVIDER = "alphavantage"
+MARKET_DATA_PROVIDER = "alpaca"
+# Data feed. Both "iex" and "delayed_sip" are free; "sip" needs a paid Alpaca
+# subscription. "delayed_sip" gives the full consolidated tape on a 15-minute
+# delay, which suits risk analytics better than IEX-only volume in real time.
+ALPACA_DATA_FEED = "delayed_sip"
 # Logs magic links to the console instead of emailing them. Set to "0" once
 # email delivery is wired up.
 DEV_LOG_MAGIC_LINKS = "1"
@@ -49,7 +53,9 @@ id = "4eaf9f7d6f254d4c879aa7725d1111da"
 #
 #   TOKEN_ENCRYPTION_KEY    openssl rand -base64 32
 #   STATE_SIGNING_SECRET    openssl rand -base64 32
-#   ALPHA_VANTAGE_API_KEY   free key from alphavantage.co
+#   ALPACA_API_KEY_ID       from alpaca.markets (works with paper keys)
+#   ALPACA_API_SECRET_KEY
+#   ALPHA_VANTAGE_API_KEY   optional fallback provider
 #   SCHWAB_CLIENT_ID / SCHWAB_CLIENT_SECRET
 #   TRADIER_CLIENT_ID / TRADIER_CLIENT_SECRET
 #

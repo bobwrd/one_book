@@ -138,7 +138,8 @@ Never commit these. `api/.dev.vars` (gitignored) holds them for local dev; use
 |---|---|
 | `TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32` — must be exactly 32 bytes |
 | `STATE_SIGNING_SECRET` | `openssl rand -base64 32` |
-| `ALPHA_VANTAGE_API_KEY` | Free key from alphavantage.co (or use `FINNHUB_API_KEY`) |
+| `ALPACA_API_KEY_ID` | From alpaca.markets — paper keys work fine |
+| `ALPACA_API_SECRET_KEY` | Same place |
 | `SCHWAB_CLIENT_ID` / `SCHWAB_CLIENT_SECRET` | Schwab developer portal, after approval |
 | `TRADIER_CLIENT_ID` / `TRADIER_CLIENT_SECRET` | Tradier developer account (OAuth only) |
 
@@ -198,6 +199,32 @@ Set `APP_ORIGIN` and `API_ORIGIN` in `api/wrangler.toml` to your real origins
 before deploying — they drive CORS and every OAuth redirect URI.
 
 ---
+
+## Market data
+
+Alpaca is the default provider. It batches every symbol into a single request,
+so a ten-name book costs one call rather than ten — the difference between
+fitting inside a free rate limit and not. It is also the same vendor as the
+first brokerage adapter, so one set of keys covers both concerns.
+
+`ALPACA_DATA_FEED` picks the source:
+
+| Feed | Cost | What you get |
+|---|---|---|
+| `delayed_sip` | Free | **Default.** Full consolidated tape, 15-minute delay |
+| `iex` | Free | Real-time, but IEX volume only — closes can differ slightly |
+| `sip` | Paid | Full tape, real time |
+
+`delayed_sip` is the default because risk analytics care more about complete
+data than about the last fifteen minutes.
+
+Everything sits behind a `MarketDataProvider` interface, with Alpha Vantage
+and Finnhub implementations kept as fallbacks — free tiers change terms
+without notice, and swapping providers should not touch the risk engine.
+
+Prices are cached in D1 regardless of provider: history for 12 hours, quotes
+for 60 seconds. On a provider failure with usable cached data, the cache wins
+and the UI labels the result stale rather than showing a blank dashboard.
 
 ## Brokers
 

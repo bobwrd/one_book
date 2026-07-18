@@ -79,7 +79,7 @@ Cloudflare Pages (frontend) + Cloudflare Workers (API) + D1 (SQLite) + KV (sessi
 Broker tokens are encrypted at rest; store the encryption key as a Worker secret, never in D1.
 
 ### 3.4 Market data
-Historical prices (for correlation/vol) and quotes come from a free market-data API. Start with Alpha Vantage (free key) or Finnhub free tier; cache aggressively in D1 to stay under rate limits. Live option chains/IV come from the connected broker when available, else user-input IV.
+Historical prices (for correlation/vol) and quotes come from **Alpaca**, behind a `MarketDataProvider` interface. Alpaca batches symbols into one request rather than one call per ticker, and it is already the first brokerage adapter — one vendor instead of two. The free `delayed_sip` feed gives the full consolidated tape on a 15-minute delay, which suits risk analytics better than real-time IEX-only volume. Alpha Vantage and Finnhub remain as fallback implementations. Cache aggressively in D1 regardless of provider. Live option chains/IV come from the connected broker when available, else user-input IV.
 
 ---
 
