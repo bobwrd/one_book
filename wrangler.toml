@@ -1,5 +1,9 @@
+# Lives at the repo root on purpose. Cloudflare Workers Builds runs
+# `npx wrangler deploy` from here, and npm workspaces need the install to
+# happen here too, so a config in api/ means every default command fails with
+# an error that names the wrong problem.
 name = "onebook-api"
-main = "src/index.ts"
+main = "api/src/index.ts"
 compatibility_date = "2024-12-18"
 compatibility_flags = ["nodejs_compat"]
 
@@ -59,4 +63,4 @@ id = "4eaf9f7d6f254d4c879aa7725d1111da"
 #   SCHWAB_CLIENT_ID / SCHWAB_CLIENT_SECRET
 #   TRADIER_CLIENT_ID / TRADIER_CLIENT_SECRET
 #
-# For local dev, put the same names in api/.dev.vars (gitignored).
+# For local dev, put the same names in .dev.vars at the repo root (gitignored).

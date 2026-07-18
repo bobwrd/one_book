@@ -131,7 +131,7 @@ npm run db:remote --workspace=api   # deployed
 
 ### 2. Set secrets
 
-Never commit these. `api/.dev.vars` (gitignored) holds them for local dev; use
+Never commit these. `.dev.vars` (gitignored) holds them for local dev; use
 `wrangler secret put` for deployment.
 
 | Secret | How to get it |
@@ -154,14 +154,9 @@ This is a **monorepo**, so the defaults do not work — Cloudflare runs
 `npx wrangler deploy` at the repo root, where there is no Wrangler config.
 Set these in the Worker's *Settings → Build* panel:
 
-| Setting | Value |
-|---|---|
-| Root directory | `/` (leave at repo root — npm workspaces need it) |
-| Build command | `npm ci` |
-| Deploy command | `npx wrangler deploy --config api/wrangler.toml` |
-
-Pointing the root directory at `/api` instead will break the install, because
-`@onebook/finance` is a workspace dependency resolved from the repo root.
+The defaults work — `wrangler.toml` lives at the repo root precisely so they
+do. Leave *Root directory* at `/`; pointing it at `/api` breaks the install,
+because `@onebook/finance` is a workspace dependency resolved from the root.
 
 The deploy also fails until `api/wrangler.toml` has real D1 and KV IDs in
 place of the `REPLACE_WITH_...` placeholders. Those IDs are not secrets and
@@ -169,23 +164,23 @@ are meant to be committed.
 
 #### From your machine
 
-Every Wrangler command must be told where the config lives, since it sits in
-`api/` rather than the repo root. Root-level scripts wrap that for you:
+Wrangler runs from the repo root, where the config lives:
 
 ```bash
-npm run deploy:api                 # deploy the Worker
-npm run secret -- TOKEN_ENCRYPTION_KEY   # set a secret
-npm run secret:list                # what's already set
-npm run db:remote                  # apply the schema
-npm run tail                       # live logs
+npm run deploy:api      # deploy the Worker
+npm run secret:list     # what's already set
+npm run db:remote       # apply the schema
+npm run tail            # live logs
 ```
 
-Generate secrets straight into Wrangler so the value never lands in your
-shell history or scrollback:
+Set secrets by piping straight into Wrangler, so the value never lands in
+your shell history or scrollback:
 
 ```bash
-openssl rand -base64 32 | npx wrangler secret put TOKEN_ENCRYPTION_KEY --config api/wrangler.toml
-openssl rand -base64 32 | npx wrangler secret put STATE_SIGNING_SECRET --config api/wrangler.toml
+openssl rand -base64 32 | npx wrangler secret put TOKEN_ENCRYPTION_KEY
+openssl rand -base64 32 | npx wrangler secret put STATE_SIGNING_SECRET
+npx wrangler secret put ALPACA_API_KEY_ID
+npx wrangler secret put ALPACA_API_SECRET_KEY
 ```
 
 
