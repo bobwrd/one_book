@@ -282,7 +282,7 @@ export function App() {
         />
 
         <div className="analysis">
-          <ScenarioBar shock={shock} onChange={setShock} />
+          <ScenarioBar shock={shock} live={live && isReal} onChange={setShock} />
 
           {(isSample || bookError || (positions.length > 0 && !isReal)) && (
             <div style={{ padding: "0 var(--s4)", paddingTop: "var(--s3)" }}>

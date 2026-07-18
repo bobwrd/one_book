@@ -280,6 +280,42 @@ input[type="range"]::-moz-range-thumb {
   background: var(--primary);
 }
 
+.scenario-state {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.5625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.state-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+}
+
+/* At rest the chip is quiet; simulated it takes the accent, so a hypothetical
+   never passes for the real book at a glance. Deliberately not green: green
+   means P&L here, and a green dot beside P&L figures is the exact ambiguity
+   that rule exists to prevent. */
+.state-chip.simulated {
+  color: var(--primary);
+}
+
+.state-chip.simulated .state-dot {
+  background: var(--primary);
+}
+
 .section {
   border-bottom: 1px solid var(--border-subtle);
   padding: var(--s4);
@@ -842,11 +878,13 @@ tbody tr:hover {
   margin-top: var(--s1);
 }
 
+/* Connected-account indicator. Accent rather than green: green is P&L only,
+   and a status light borrowing it erodes that guarantee everywhere else. */
 .dot {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--gain);
+  background: var(--primary);
   display: inline-block;
 }
 

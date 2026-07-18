@@ -453,3 +453,34 @@ describe("theme", () => {
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
   });
 });
+
+describe("scenario resting state", () => {
+  it("labels the resting state so sliders read as a departure from reality", () => {
+    render(<App />);
+    // Signed out, prices are local — must not claim to be live market data.
+    expect(screen.getByText("at spot")).toBeTruthy();
+    expect(screen.queryByText("simulated")).toBeNull();
+  });
+
+  it("marks the view as simulated once any slider moves", () => {
+    render(<App />);
+
+    fireEvent.change(
+      screen.getByLabelText("Underlying price shock, percent"),
+      { target: { value: "10" } },
+    );
+    expect(screen.getByText("simulated")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Reset"));
+    expect(screen.queryByText("simulated")).toBeNull();
+  });
+
+  it("marks simulated for a vol or time shock, not just price", () => {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText("Days forward for time decay"), {
+      target: { value: "30" },
+    });
+    expect(screen.getByText("simulated")).toBeTruthy();
+  });
+});

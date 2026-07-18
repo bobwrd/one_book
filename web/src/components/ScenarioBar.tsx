@@ -11,10 +11,12 @@ import { formatSignedPercent } from "../format.js";
 
 interface Props {
   shock: Shock;
+  /** True when spot prices come from a live market-data feed. */
+  live: boolean;
   onChange: (shock: Shock) => void;
 }
 
-export function ScenarioBar({ shock, onChange }: Props) {
+export function ScenarioBar({ shock, live, onChange }: Props) {
   const isShocked =
     shock.priceShock !== 0 || shock.volShock !== 0 || shock.daysForward !== 0;
 
@@ -53,14 +55,59 @@ export function ScenarioBar({ shock, onChange }: Props) {
         onChange={(v) => onChange({ ...shock, daysForward: v })}
       />
 
-      <button
-        onClick={() => onChange({ priceShock: 0, volShock: 0, daysForward: 0 })}
-        disabled={!isShocked}
-        title="Return all sliders to current market"
-      >
-        Reset
-      </button>
+      <div className="scenario-state">
+        <StateLabel isShocked={isShocked} live={live} />
+        <button
+          onClick={() =>
+            onChange({ priceShock: 0, volShock: 0, daysForward: 0 })
+          }
+          disabled={!isShocked}
+          title="Return every slider to current market"
+        >
+          Reset
+        </button>
+      </div>
     </div>
+  );
+}
+
+/**
+ * Says whether the dashboard is showing the book as it stands or a
+ * hypothetical. Without this the sliders read as the source of the numbers
+ * rather than a departure from them — and at rest there is nothing on screen
+ * to indicate which.
+ *
+ * The resting label never claims "live" unless prices genuinely came from a
+ * feed; on local data it says so instead.
+ */
+function StateLabel({
+  isShocked,
+  live,
+}: {
+  isShocked: boolean;
+  live: boolean;
+}) {
+  if (isShocked) {
+    return (
+      <span className="state-chip simulated" title="Showing a hypothetical market, not your book as it stands">
+        <span className="state-dot" />
+        simulated
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="state-chip"
+      title={
+        live
+          ? "Your book at current market prices. Move a slider to explore a hypothetical."
+          : "Your book at the prices on file. Sign in for live quotes."
+      }
+    >
+      <span className="state-dot" />
+      {live ? "at market" : "at spot"}
+    </span>
   );
 }
 
