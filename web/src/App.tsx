@@ -11,6 +11,7 @@ import {
   bookExposure,
   breakevens,
   concentration,
+  riskContributions,
   correlationMatrix,
   covarianceMatrix,
   DEFAULT_RISK_FREE_RATE,
@@ -177,6 +178,7 @@ export function App() {
     let vol: number | null = null;
     let var95: number | null = null;
     let var99: number | null = null;
+    let decomposition: ReturnType<typeof riskContributions> = null;
 
     if (history.length >= 1) {
       try {
@@ -185,12 +187,13 @@ export function App() {
         vol = portfolioVolatility(exposure.notionalByTicker, cov);
         var95 = parametricVar(exposure.notionalByTicker, cov, 0.95).value;
         var99 = parametricVar(exposure.notionalByTicker, cov, 0.99).value;
+        decomposition = riskContributions(exposure.notionalByTicker, cov);
       } catch {
         // As above.
       }
     }
 
-    return { scenario, exposure, conc, vol, var95, var99 };
+    return { scenario, exposure, conc, vol, var95, var99, decomposition };
   }, [positions, market, shock, history]);
 
   const curve = useMemo(
@@ -204,6 +207,23 @@ export function App() {
           }),
     [positions, market, shock.volShock, shock.daysForward],
   );
+
+  // Keyed lookup so the exposure table can show risk share alongside notional
+  // weight without reordering — the divergence between the two columns is the
+  // point, and it only reads if the rows stay put.
+  const riskShareByTicker = useMemo(() => {
+    const map = new Map<
+      string,
+      { contributionShare: number; contribution: number }
+    >();
+    for (const c of shocked?.decomposition?.contributions ?? []) {
+      map.set(c.ticker, {
+        contributionShare: c.contributionShare,
+        contribution: c.contribution,
+      });
+    }
+    return map;
+  }, [shocked]);
 
   const exposureById = useMemo(() => {
     const map = new Map<string, PositionExposure>();
@@ -485,28 +505,73 @@ export function App() {
                         <th style={{ textAlign: "right" }}>Δ-equiv shares</th>
                         <th style={{ textAlign: "right" }}>Notional</th>
                         <th style={{ textAlign: "right" }}>% of gross</th>
+                        <th
+                          style={{ textAlign: "right" }}
+                          title="Share of portfolio volatility, computed as w×(Σw)/σ. Contributions sum to total volatility, so a name can carry more risk than its size suggests — or less, if it hedges."
+                        >
+                          % of risk
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {(shocked?.conc.breakdown ?? []).map((row) => (
-                        <tr key={row.ticker}>
-                          <td>{row.ticker}</td>
-                          <td className="num" style={{ textAlign: "right" }}>
-                            {(
-                              shocked?.exposure.byTicker[row.ticker] ?? 0
-                            ).toFixed(1)}
-                          </td>
-                          <td className="num" style={{ textAlign: "right" }}>
-                            {formatUsd(row.notional, 0)}
-                          </td>
-                          <td className="num" style={{ textAlign: "right" }}>
-                            {formatPercent(row.weight, 1)}
-                          </td>
-                        </tr>
-                      ))}
+                      {(shocked?.conc.breakdown ?? []).map((row) => {
+                        const rc = riskShareByTicker.get(row.ticker);
+                        return (
+                          <tr key={row.ticker}>
+                            <td>{row.ticker}</td>
+                            <td className="num" style={{ textAlign: "right" }}>
+                              {(
+                                shocked?.exposure.byTicker[row.ticker] ?? 0
+                              ).toFixed(1)}
+                            </td>
+                            <td className="num" style={{ textAlign: "right" }}>
+                              {formatUsd(row.notional, 0)}
+                            </td>
+                            <td className="num" style={{ textAlign: "right" }}>
+                              {formatPercent(row.weight, 1)}
+                            </td>
+                            <td className="num risk-share-cell">
+                              {rc === undefined ? (
+                                <span className="risk-share-none">—</span>
+                              ) : (
+                                <div className="risk-share">
+                                  <span className="risk-share-num">
+                                    {formatPercent(rc.contributionShare, 1)}
+                                  </span>
+                                  <span
+                                    className="risk-bar-track"
+                                    aria-hidden="true"
+                                  >
+                                    <span
+                                      className={
+                                        rc.contributionShare < 0
+                                          ? "risk-bar risk-bar-hedge"
+                                          : "risk-bar"
+                                      }
+                                      style={{
+                                        width: `${Math.min(
+                                          100,
+                                          Math.abs(rc.contributionShare) * 100,
+                                        )}%`,
+                                      }}
+                                    />
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
+                {shocked?.decomposition === null && positions.length > 0 && (
+                  <p className="table-note">
+                    Risk contributions are unavailable while the book has no
+                    measurable volatility — a flat or fully hedged book has no
+                    risk to attribute.
+                  </p>
+                )}
               </div>
             </>
           )}

@@ -454,6 +454,31 @@ describe("theme", () => {
   });
 });
 
+describe("risk contribution", () => {
+  it("renders a risk share column alongside notional weight", () => {
+    render(<App />);
+    expect(screen.getByText("% of risk")).toBeTruthy();
+    expect(screen.getByText("% of gross")).toBeTruthy();
+  });
+
+  it("gives every underlying a risk share on the sample book", () => {
+    const { container } = render(<App />);
+    // The sample book is neither flat nor fully hedged, so the decomposition
+    // must resolve — an em-dash in every row would mean it silently bailed.
+    const bars = container.querySelectorAll(".risk-bar");
+    expect(bars.length).toBeGreaterThan(0);
+  });
+
+  it("does not use P&L colors for the risk bar", () => {
+    // Green and red mean profit and loss and nothing else. A risk attribution
+    // bar in --gain would read as "this position is doing well."
+    const { container } = render(<App />);
+    for (const bar of container.querySelectorAll(".risk-bar")) {
+      expect(bar.className).not.toMatch(/gain|loss/);
+    }
+  });
+});
+
 describe("scenario resting state", () => {
   it("labels the resting state so sliders read as a departure from reality", () => {
     render(<App />);

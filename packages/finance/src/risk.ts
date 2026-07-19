@@ -193,6 +193,91 @@ export function sharpeRatio(
   return (annualReturn - riskFreeRate) / vol;
 }
 
+export interface RiskContribution {
+  ticker: string;
+  /** Signed notional exposure, echoed for convenience. */
+  notional: number;
+  /** Share of gross notional, 0-1. What the book *looks* like. */
+  weight: number;
+  /**
+   * Contribution to annualized portfolio volatility, in the same dollar units.
+   * Signed: a hedge contributes negatively.
+   */
+  contribution: number;
+  /** Contribution as a fraction of portfolio volatility. What the book *is*. */
+  contributionShare: number;
+  /**
+   * Marginal volatility per additional dollar of exposure — the derivative
+   * of portfolio vol with respect to this ticker's notional.
+   */
+  marginal: number;
+}
+
+export interface RiskDecomposition {
+  /** Annualized portfolio volatility. Contributions sum to exactly this. */
+  portfolioVolatility: number;
+  contributions: RiskContribution[];
+}
+
+/**
+ * Decompose portfolio volatility into per-ticker contributions.
+ *
+ * Contribution of ticker *i* is `w_i × (Σw)_i / σ_p`. These sum to `σ_p`
+ * exactly (Euler's theorem on the homogeneous-of-degree-one vol function),
+ * which is what makes the decomposition a genuine attribution rather than a
+ * heuristic split — and what the unit test pins.
+ *
+ * This is the delta-equivalent thesis paying off: because a stock and an
+ * option on the same underlying land in the same `w` entry, the answer to
+ * "how much of my risk is AAPL" accounts for the calls hedging the shares,
+ * rather than measuring them as two unrelated line items.
+ *
+ * Returns null contributions when the book is flat or fully hedged. A hedged
+ * book drives `σ_p` to zero, and dividing by it yields infinities that render
+ * as confident-looking garbage; the roadmap calls this out and
+ * `portfolioVolatility` already floors at zero for the same reason.
+ */
+export function riskContributions(
+  notionalByTicker: Record<string, number>,
+  cov: Matrix,
+): RiskDecomposition | null {
+  const sigma = portfolioVolatility(notionalByTicker, cov);
+
+  // Not merely `=== 0`: a book hedged to within a rounding error produces a
+  // tiny-but-nonzero sigma, and dividing by it inflates contributions to
+  // absurd magnitudes. Treat near-zero as undecomposable and say so.
+  if (!Number.isFinite(sigma) || sigma < 1e-9) return null;
+
+  const w = cov.tickers.map((t) => notionalByTicker[t] ?? 0);
+  const gross = w.reduce((a, x) => a + Math.abs(x), 0);
+
+  const contributions = cov.tickers.map((ticker, i) => {
+    // (Σw)_i — the i-th row of the covariance matrix applied to the exposure
+    // vector, i.e. this ticker's covariance with the portfolio as a whole.
+    let covWithPortfolio = 0;
+    for (let j = 0; j < w.length; j++) {
+      covWithPortfolio += cov.values[i][j] * w[j];
+    }
+
+    const marginal = covWithPortfolio / sigma;
+    const contribution = w[i] * marginal;
+
+    return {
+      ticker,
+      notional: w[i],
+      weight: gross === 0 ? 0 : Math.abs(w[i]) / gross,
+      contribution,
+      contributionShare: contribution / sigma,
+      marginal,
+    };
+  });
+
+  // Largest risk contributors first — the ordering the dashboard reads in.
+  contributions.sort((a, b) => b.contribution - a.contribution);
+
+  return { portfolioVolatility: sigma, contributions };
+}
+
 export interface ConcentrationBreakdown {
   ticker: string;
   notional: number;

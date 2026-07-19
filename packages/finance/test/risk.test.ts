@@ -17,6 +17,7 @@ import {
   normInv,
   parametricVar,
   portfolioVolatility,
+  riskContributions,
   sharpeRatio,
 } from "../src/risk.js";
 
@@ -260,6 +261,129 @@ describe("sharpeRatio", () => {
     const flatSharpe = sharpeRatio({ A: 10_000 }, flat, 0.04)!;
     const risingSharpe = sharpeRatio({ A: 10_000 }, rising, 0.04)!;
     expect(risingSharpe).toBeGreaterThan(flatSharpe);
+  });
+});
+
+describe("riskContributions", () => {
+  /** Three correlated names with genuinely different vols. */
+  function threeNameCov() {
+    const series: PriceSeries[] = [
+      { ticker: "AAPL", dates: [], closes: walk(1, 260, 0, 0.012) },
+      { ticker: "MSFT", dates: [], closes: walk(2, 260, 0, 0.009) },
+      { ticker: "NVDA", dates: [], closes: walk(3, 260, 0, 0.028) },
+    ];
+    const dates = series[0].closes.map((_, i) =>
+      new Date(Date.UTC(2024, 0, 1) + i * 86_400_000).toISOString().slice(0, 10),
+    );
+    for (const s of series) s.dates = dates;
+    const aligned = alignSeries(series);
+    return covarianceMatrix(aligned.returns, aligned.tickers);
+  }
+
+  it("contributions sum exactly to portfolio volatility", () => {
+    const cov = threeNameCov();
+    const notional = { AAPL: 120_000, MSFT: 80_000, NVDA: 45_000 };
+
+    const d = riskContributions(notional, cov)!;
+    const total = d.contributions.reduce((a, c) => a + c.contribution, 0);
+
+    // Euler's theorem: this identity is what makes the split an attribution
+    // rather than a heuristic. It should hold to floating-point precision.
+    expect(total).toBeCloseTo(d.portfolioVolatility, 9);
+    expect(d.portfolioVolatility).toBeCloseTo(
+      portfolioVolatility(notional, cov),
+      12,
+    );
+  });
+
+  it("contribution shares sum to one", () => {
+    const cov = threeNameCov();
+    const d = riskContributions(
+      { AAPL: 120_000, MSFT: 80_000, NVDA: 45_000 },
+      cov,
+    )!;
+    const shares = d.contributions.reduce((a, c) => a + c.contributionShare, 0);
+    expect(shares).toBeCloseTo(1, 9);
+  });
+
+  it("holds the summation identity when a leg is short", () => {
+    const cov = threeNameCov();
+    // A short leg contributes negatively; the identity must still close.
+    const d = riskContributions(
+      { AAPL: 120_000, MSFT: -90_000, NVDA: 30_000 },
+      cov,
+    )!;
+    const total = d.contributions.reduce((a, c) => a + c.contribution, 0);
+    expect(total).toBeCloseTo(d.portfolioVolatility, 9);
+  });
+
+  it("separates risk share from notional weight", () => {
+    const cov = threeNameCov();
+    // NVDA is the smallest position by notional but much the most volatile,
+    // so its risk share should exceed its weight. This divergence is the
+    // entire point of the metric.
+    const d = riskContributions(
+      { AAPL: 100_000, MSFT: 100_000, NVDA: 50_000 },
+      cov,
+    )!;
+    const nvda = d.contributions.find((c) => c.ticker === "NVDA")!;
+    expect(nvda.contributionShare).toBeGreaterThan(nvda.weight);
+  });
+
+  it("sorts by descending contribution", () => {
+    const cov = threeNameCov();
+    const d = riskContributions(
+      { AAPL: 100_000, MSFT: 100_000, NVDA: 50_000 },
+      cov,
+    )!;
+    const contribs = d.contributions.map((c) => c.contribution);
+    expect(contribs).toEqual([...contribs].sort((a, b) => b - a));
+  });
+
+  it("returns null for a flat book rather than dividing by zero", () => {
+    expect(riskContributions({}, threeNameCov())).toBeNull();
+    expect(riskContributions({ AAPL: 0, MSFT: 0, NVDA: 0 }, threeNameCov()))
+      .toBeNull();
+  });
+
+  it("returns null for a fully hedged book rather than infinities", () => {
+    // Perfectly offsetting exposure on a single name drives sigma to zero.
+    // The roadmap flags this as the case that blows up the division.
+    const series: PriceSeries[] = [
+      { ticker: "AAPL", dates: [], closes: walk(1, 120, 0, 0.012) },
+    ];
+    series[0].dates = series[0].closes.map((_, i) =>
+      new Date(Date.UTC(2024, 0, 1) + i * 86_400_000).toISOString().slice(0, 10),
+    );
+    const aligned = alignSeries(series);
+    const cov = covarianceMatrix(aligned.returns, aligned.tickers);
+
+    const d = riskContributions({ AAPL: 0 }, cov);
+    expect(d).toBeNull();
+    // And every contribution stays finite in the near-hedged case.
+    const nearlyHedged = riskContributions({ AAPL: 1e-4 }, cov);
+    if (nearlyHedged) {
+      for (const c of nearlyHedged.contributions) {
+        expect(Number.isFinite(c.contribution)).toBe(true);
+        expect(Number.isFinite(c.marginal)).toBe(true);
+      }
+    }
+  });
+
+  it("ignores tickers absent from the covariance matrix", () => {
+    const cov = threeNameCov();
+    // A position with no price history must not silently drop the others.
+    const d = riskContributions(
+      { AAPL: 100_000, MSFT: 50_000, NVDA: 25_000, UNKNOWN: 999_999 },
+      cov,
+    )!;
+    expect(d.contributions.map((c) => c.ticker).sort()).toEqual([
+      "AAPL",
+      "MSFT",
+      "NVDA",
+    ]);
+    const total = d.contributions.reduce((a, c) => a + c.contribution, 0);
+    expect(total).toBeCloseTo(d.portfolioVolatility, 9);
   });
 });
 

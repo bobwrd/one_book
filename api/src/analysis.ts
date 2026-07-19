@@ -17,6 +17,7 @@ import {
   breakevens,
   portfolioVolatility,
   riskCallouts,
+  riskContributions,
   runScenario,
   sharpeRatio,
   type MarketSnapshot,
@@ -46,6 +47,8 @@ export function analyzePortfolio(
   let var95 = null;
   let var99 = null;
   let sharpe: number | null = null;
+  // Null whenever the book is flat or hedged flat — see riskContributions.
+  let decomposition: ReturnType<typeof riskContributions> = null;
 
   const usable = history.filter((s) => s.closes.length >= 2);
 
@@ -58,6 +61,7 @@ export function analyzePortfolio(
       var95 = parametricVar(exposure.notionalByTicker, cov, 0.95);
       var99 = parametricVar(exposure.notionalByTicker, cov, 0.99);
       sharpe = sharpeRatio(exposure.notionalByTicker, usable, riskFreeRate);
+      decomposition = riskContributions(exposure.notionalByTicker, cov);
 
       if (usable.length >= 2) {
         const corr = correlationMatrix(aligned.returns, aligned.tickers);
@@ -105,6 +109,7 @@ export function analyzePortfolio(
       historicalVar95,
       sharpe,
       concentration: conc,
+      decomposition,
     },
     correlation,
     payoff: {

@@ -643,6 +643,60 @@ tbody tr:hover {
   background: var(--surface-hover);
 }
 
+/* Risk contribution bar in the exposure table.
+   Deliberately uses the olive accent rather than --gain/--loss: this is an
+   attribution of volatility, not profit and loss, and green here would read
+   as "good" beside a P&L figure that means something else entirely. */
+.risk-share-cell {
+  text-align: right;
+  width: 8.5rem;
+}
+
+.risk-share {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s2);
+}
+
+.risk-share-num {
+  min-width: 3.25rem;
+  text-align: right;
+}
+
+.risk-bar-track {
+  flex: 1;
+  min-width: 2.5rem;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+
+.risk-bar {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--primary);
+}
+
+/* A hedging leg subtracts from portfolio risk. Muted rather than a second
+   hue, so it reads as "less" without implying a judgment. */
+.risk-bar-hedge {
+  background: var(--ink-faint);
+}
+
+.risk-share-none {
+  color: var(--ink-faint);
+}
+
+.table-note {
+  margin-top: var(--s2);
+  font-size: 0.625rem;
+  color: var(--ink-muted);
+  line-height: 1.5;
+}
+
 /* ----------------------------------------------------------- states */
 
 .empty {
