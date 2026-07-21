@@ -204,6 +204,30 @@ export async function readSession(
 }
 
 /**
+ * How stale `last_seen_at` may get before a request refreshes it.
+ *
+ * Writing on every authenticated request would cost a D1 write per API call
+ * for a column nothing reads in real time. Settings shows this as relative
+ * time ("3h ago"), so minute-level precision is already more than it renders.
+ */
+const LAST_SEEN_REFRESH_MS = 5 * 60 * 1000;
+
+/**
+ * Record that a session was used.
+ *
+ * The freshness guard lives in the WHERE clause so this stays a single
+ * statement — no read to decide whether to write.
+ */
+async function touchSession(env: Env, sessionId: string): Promise<void> {
+  const now = Date.now();
+  await env.DB.prepare(
+    "UPDATE sessions SET last_seen_at = ? WHERE id = ? AND last_seen_at < ?",
+  )
+    .bind(now, sessionId, now - LAST_SEEN_REFRESH_MS)
+    .run();
+}
+
+/**
  * Route guard. Every authenticated route hangs off this, so `user_id` is
  * always derived from the session and never from a client-supplied value.
  */
@@ -216,6 +240,22 @@ export const requireAuth: MiddlewareHandler<{
     return c.json({ error: "Not authenticated." }, 401);
   }
   c.set("session", session);
+
+  // Off the response path: the caller is waiting on their actual request, not
+  // on session bookkeeping. Failures here are deliberately swallowed — a
+  // missed timestamp must never turn a working request into an error.
+  const sessionId = currentSessionId(c as AppContext);
+  if (sessionId) {
+    const write = touchSession(c.env, sessionId).catch(() => {});
+    try {
+      c.executionCtx.waitUntil(write);
+    } catch {
+      // No execution context (unit tests, some runtimes); the write is
+      // already in flight, so just let it settle.
+      await write;
+    }
+  }
+
   await next();
 };
 

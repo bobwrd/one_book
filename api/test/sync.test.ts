@@ -31,8 +31,15 @@ interface Tables {
  * statements this route issues — enough to exercise real routing, ownership
  * checks, and write ordering without a database.
  */
+/** Bind args of every `UPDATE sessions SET last_seen_at` issued this test. */
+let sessionUpdates: number[][] = [];
+
 function fakeDb(tables: Tables) {
   function run(sql: string, args: unknown[]) {
+    if (sql.includes("UPDATE sessions SET last_seen_at")) {
+      sessionUpdates.push(args as number[]);
+      return { changes: 1 };
+    }
     if (sql.includes("INSERT INTO broker_connection_errors")) {
       const [connection_id, message, occurred_at] = args;
       tables.broker_connection_errors = tables.broker_connection_errors.filter(
@@ -180,6 +187,7 @@ function syncRequest() {
 }
 
 beforeEach(async () => {
+  sessionUpdates = [];
   tables = {
     portfolios: [{ id: PORTFOLIO_ID, name: "Main", user_id: USER_ID }],
     broker_connections: [
@@ -217,6 +225,49 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("session last-seen tracking", () => {
+  /**
+   * Settings renders `last_seen_at` as relative time. If nothing ever wrote it
+   * the column would silently mirror `created_at` forever -- a "Last seen"
+   * value that is dead data dressed as live.
+   */
+  function updates() {
+    return sessionUpdates.slice();
+  }
+
+  it("refreshes last_seen_at on an authenticated request", async () => {
+    await app.request(
+      "/portfolios",
+      { headers: { cookie: `onebook_session=${SESSION_ID}` } },
+      env,
+    );
+
+    const [write] = updates();
+    expect(write).toBeDefined();
+    // now, session id, and the staleness cutoff.
+    expect(write[1]).toBe(SESSION_ID);
+    expect(typeof write[0]).toBe("number");
+  });
+
+  it("guards the write on staleness rather than reading first", async () => {
+    await app.request(
+      "/portfolios",
+      { headers: { cookie: `onebook_session=${SESSION_ID}` } },
+      env,
+    );
+
+    const [write] = updates();
+    // The cutoff trails "now" by the refresh window, so a session touched a
+    // moment ago matches nothing and costs no row write.
+    expect(write[0] - write[2]).toBe(5 * 60 * 1000);
+  });
+
+  it("does not touch a session for an unauthenticated request", async () => {
+    await app.request("/portfolios", {}, env);
+    expect(updates()).toHaveLength(0);
+  });
 });
 
 describe("public reference data", () => {
