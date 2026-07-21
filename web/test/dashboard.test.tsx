@@ -9,6 +9,18 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { App } from "../src/App.js";
 
+/**
+ * Render the app, optionally at a route other than `/`.
+ *
+ * `App` owns its own BrowserRouter, so the starting route is set on the
+ * history rather than by wrapping in a MemoryRouter. Everything goes through
+ * here so there is one place to change if that ever stops being true.
+ */
+function renderApp(route = "/") {
+  window.history.pushState({}, "", route);
+  return render(<App />);
+}
+
 function addStock(ticker: string, shares: string) {
   fireEvent.click(screen.getByText("Add position"));
   fireEvent.change(screen.getByLabelText("Ticker"), {
@@ -97,7 +109,7 @@ afterEach(() => {
 
 describe("OneBook dashboard", () => {
   it("seeds a sample book on first load and labels it as illustrative", () => {
-    render(<App />);
+    renderApp();
     // Demo numbers must never be presented as the user's own positions.
     expect(screen.getByText(/Sample book/)).toBeTruthy();
     expect(railTickers()).toContain("AAPL");
@@ -105,7 +117,7 @@ describe("OneBook dashboard", () => {
   });
 
   it("replaces the sample book when a real position is added", () => {
-    render(<App />);
+    renderApp();
     expect(screen.getByText(/Sample book/)).toBeTruthy();
 
     addStock("TSTA", "100");
@@ -116,21 +128,21 @@ describe("OneBook dashboard", () => {
   });
 
   it("shows the empty state once the book is cleared", () => {
-    render(<App />);
+    renderApp();
     addStock("TSTA", "100");
     fireEvent.click(screen.getByLabelText("Remove TSTA position"));
     expect(screen.getByText("Your book is empty")).toBeTruthy();
   });
 
   it("always shows the not-investment-advice disclaimer", () => {
-    render(<App />);
+    renderApp();
     expect(
       screen.getByText(/not investment advice/i),
     ).toBeTruthy();
   });
 
   it("accepts a hand-entered stock position", () => {
-    render(<App />);
+    renderApp();
     addStock("TSTA", "100");
 
     expect(railTickers()).toEqual(["TSTA"]);
@@ -140,7 +152,7 @@ describe("OneBook dashboard", () => {
   });
 
   it("accepts a mixed stock and option book", () => {
-    render(<App />);
+    renderApp();
     addStock("TSTA", "100");
     addOption({
       ticker: "TSTA",
@@ -154,7 +166,7 @@ describe("OneBook dashboard", () => {
   });
 
   it("nets a covered call down against its stock — the core insight", () => {
-    render(<App />);
+    renderApp();
     addStock("TSTA", "100");
     const stockOnlyDelta = Number(tileValue("Net delta"));
 
@@ -173,7 +185,7 @@ describe("OneBook dashboard", () => {
   });
 
   it("moves P&L, Greeks, and VaR together when the price slider is dragged", () => {
-    render(<App />);
+    renderApp();
     addStock("TSTA", "100");
     addOption({
       ticker: "TSTA",
@@ -210,7 +222,7 @@ describe("OneBook dashboard", () => {
   });
 
   it("shows a loss on a downward shock for a long book", () => {
-    render(<App />);
+    renderApp();
     addStock("TSTA", "100");
 
     fireEvent.change(
@@ -222,7 +234,7 @@ describe("OneBook dashboard", () => {
   });
 
   it("decays a long option book as the time slider advances", () => {
-    render(<App />);
+    renderApp();
     addOption({
       ticker: "TSTA",
       contracts: "5",
@@ -239,7 +251,7 @@ describe("OneBook dashboard", () => {
   });
 
   it("gains on a long option book when the vol slider rises", () => {
-    render(<App />);
+    renderApp();
     addOption({
       ticker: "TSTA",
       contracts: "5",
@@ -257,7 +269,7 @@ describe("OneBook dashboard", () => {
   });
 
   it("resets every slider back to spot", () => {
-    render(<App />);
+    renderApp();
     addStock("TSTA", "100");
 
     fireEvent.change(
@@ -271,7 +283,7 @@ describe("OneBook dashboard", () => {
   });
 
   it("shows the delta-equivalent share count on every position row", () => {
-    render(<App />);
+    renderApp();
     addStock("TSTA", "100");
 
     const rows = document.querySelectorAll(".position-eq");
@@ -281,7 +293,7 @@ describe("OneBook dashboard", () => {
   });
 
   it("marks hand-entered implied vol as an estimate", () => {
-    render(<App />);
+    renderApp();
     addOption({
       ticker: "TSTA",
       contracts: "1",
@@ -296,7 +308,7 @@ describe("OneBook dashboard", () => {
   });
 
   it("flags a net short gamma book in the callouts", () => {
-    render(<App />);
+    renderApp();
     addOption({
       ticker: "TSTA",
       contracts: "-20",
@@ -309,7 +321,7 @@ describe("OneBook dashboard", () => {
   });
 
   it("renders a correlation heatmap once there are two underlyings", () => {
-    render(<App />);
+    renderApp();
     addStock("TSTA", "100");
     expect(screen.getAllByText("Not enough underlyings").length).toBeGreaterThan(0);
 
@@ -322,7 +334,7 @@ describe("OneBook dashboard", () => {
   });
 
   it("removes a position", () => {
-    render(<App />);
+    renderApp();
     addStock("TSTA", "100");
     expect(screen.getByText("1 pos · 1 sym")).toBeTruthy();
 
@@ -331,34 +343,34 @@ describe("OneBook dashboard", () => {
   });
 
   it("persists the book across a remount", () => {
-    const first = render(<App />);
+    const first = renderApp();
     addStock("TSTA", "100");
     first.unmount();
 
-    render(<App />);
+    renderApp();
     expect(railTickers()).toEqual(["TSTA"]);
     expect(screen.getByText("1 pos · 1 sym")).toBeTruthy();
   });
 
   it("survives corrupt localStorage rather than failing to mount", () => {
     localStorage.setItem("onebook.positions.v1", "{not json");
-    render(<App />);
+    renderApp();
     // Falls back to the sample book instead of crashing.
     expect(screen.getByText(/Sample book/)).toBeTruthy();
   });
 });
 
 describe("connect accounts", () => {
+  /** Connecting an account is a Settings task now, not a modal over the book. */
   function openConnect() {
-    render(<App />);
-    fireEvent.click(screen.getByText(/^Accounts/));
+    renderApp("/settings");
   }
 
   /** The submit button, scoped to the footer so the broker rows' "Connect →"
    *  labels don't match ambiguously. */
   function submitButton(): HTMLElement {
     const foot = document.querySelector(".modal-foot");
-    if (!foot) throw new Error("No modal footer");
+    if (!foot) throw new Error("No connect footer");
     return within(foot as HTMLElement).getByText("Connect");
   }
 
@@ -446,23 +458,80 @@ describe("connect accounts", () => {
 
 describe("theme", () => {
   it("defaults to dark and toggles to light", () => {
-    render(<App />);
+    // The toggle has exactly one home, in Settings — there is deliberately no
+    // second copy in the top strip to drift out of sync with it.
+    renderApp("/settings");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
 
     fireEvent.click(screen.getByLabelText("Toggle theme"));
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
   });
+
+  it("does not duplicate the theme toggle on the dashboard", () => {
+    renderApp();
+    expect(screen.queryByLabelText("Toggle theme")).toBeNull();
+  });
+});
+
+describe("navigation shell", () => {
+  it("renders every nav destination in the sidebar", () => {
+    renderApp();
+    const sidebar = document.querySelector(".sidebar") as HTMLElement;
+    for (const label of [
+      "Overview",
+      "History",
+      "Instruments",
+      "Settings",
+      "Sign in",
+    ]) {
+      expect(within(sidebar).getByText(label)).toBeTruthy();
+    }
+  });
+
+  it("still renders the dashboard at /", () => {
+    renderApp();
+    // The regression check on the Dashboard extraction: the scenario engine,
+    // the rail, and the exposure table all have to survive the move.
+    // "Scenario P&L" is both a section heading and a tile label, so match on
+    // the tile the extraction had to carry over.
+    expect(tileValue("Scenario P&L")).toBeTruthy();
+    expect(screen.getByText("Exposure by underlying")).toBeTruthy();
+    expect(document.querySelector(".rail")).toBeTruthy();
+  });
+
+  it("navigates to History from the sidebar", () => {
+    renderApp();
+    const sidebar = document.querySelector(".sidebar") as HTMLElement;
+    fireEvent.click(within(sidebar).getByText("History"));
+
+    const head = document.querySelector(".page-head") as HTMLElement;
+    expect(within(head).getByText("History")).toBeTruthy();
+  });
+
+  it("navigates to Instruments from the sidebar", () => {
+    renderApp();
+    const sidebar = document.querySelector(".sidebar") as HTMLElement;
+    fireEvent.click(within(sidebar).getByText("Instruments"));
+
+    const head = document.querySelector(".page-head") as HTMLElement;
+    expect(within(head).getByText("Instruments")).toBeTruthy();
+  });
+
+  it("keeps the position count visible on every route", () => {
+    renderApp("/settings");
+    expect(screen.getByText(/\d+ pos · \d+ sym/)).toBeTruthy();
+  });
 });
 
 describe("risk contribution", () => {
   it("renders a risk share column alongside notional weight", () => {
-    render(<App />);
+    renderApp();
     expect(screen.getByText("% of risk")).toBeTruthy();
     expect(screen.getByText("% of gross")).toBeTruthy();
   });
 
   it("gives every underlying a risk share on the sample book", () => {
-    const { container } = render(<App />);
+    const { container } = renderApp();
     // The sample book is neither flat nor fully hedged, so the decomposition
     // must resolve — an em-dash in every row would mean it silently bailed.
     const bars = container.querySelectorAll(".risk-bar");
@@ -472,7 +541,7 @@ describe("risk contribution", () => {
   it("does not use P&L colors for the risk bar", () => {
     // Green and red mean profit and loss and nothing else. A risk attribution
     // bar in --gain would read as "this position is doing well."
-    const { container } = render(<App />);
+    const { container } = renderApp();
     for (const bar of container.querySelectorAll(".risk-bar")) {
       expect(bar.className).not.toMatch(/gain|loss/);
     }
@@ -481,14 +550,14 @@ describe("risk contribution", () => {
 
 describe("scenario resting state", () => {
   it("labels the resting state so sliders read as a departure from reality", () => {
-    render(<App />);
+    renderApp();
     // Signed out, prices are local — must not claim to be live market data.
     expect(screen.getByText("at spot")).toBeTruthy();
     expect(screen.queryByText("simulated")).toBeNull();
   });
 
   it("marks the view as simulated once any slider moves", () => {
-    render(<App />);
+    renderApp();
 
     fireEvent.change(
       screen.getByLabelText("Underlying price shock, percent"),
@@ -501,7 +570,7 @@ describe("scenario resting state", () => {
   });
 
   it("marks simulated for a vol or time shock, not just price", () => {
-    render(<App />);
+    renderApp();
 
     fireEvent.change(screen.getByLabelText("Days forward for time decay"), {
       target: { value: "30" },

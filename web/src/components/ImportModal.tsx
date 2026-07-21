@@ -16,7 +16,7 @@ import {
   type CsvField,
   type ImportResult,
 } from "@onebook/finance";
-import { isOption, type Position } from "@onebook/finance";
+import { isBond, isOption, type Position } from "@onebook/finance";
 
 interface Props {
   onImport: (positions: Position[]) => void;
@@ -177,11 +177,15 @@ export function ImportModal({ onImport, onClose }: Props) {
                     <tr key={p.id}>
                       <td>{p.ticker}</td>
                       <td>{p.type}</td>
-                      <td className="num">{p.quantity}</td>
+                      <td className="num">
+                        {isBond(p) ? p.faceValue : p.quantity}
+                      </td>
                       <td className="num">
                         {isOption(p)
                           ? `${p.right === "call" ? "C" : "P"}${p.strike} ${p.expiry}`
-                          : "—"}
+                          : isBond(p)
+                            ? `${(p.couponRate * 100).toFixed(2)}% ${p.maturity}`
+                            : "—"}
                       </td>
                     </tr>
                   ))}

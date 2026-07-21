@@ -1,0 +1,557 @@
+/**
+ * The risk dashboard — the `/` route.
+ *
+ * Everything here used to be `App.tsx`'s only screen. The scenario memos live
+ * on this page rather than in shared state so the heavy reprice work only runs
+ * when the dashboard is actually on screen.
+ */
+
+import { useMemo, useState } from "react";
+import {
+  alignSeries,
+  bookExposure,
+  breakevens,
+  concentration,
+  riskContributions,
+  correlationMatrix,
+  covarianceMatrix,
+  DEFAULT_RISK_FREE_RATE,
+  isOption,
+  parametricVar,
+  payoffCurve,
+  portfolioVolatility,
+  riskCallouts,
+  runScenario,
+  shockMarket,
+  type MarketSnapshot,
+  type PositionExposure,
+  type Shock,
+} from "@onebook/finance";
+import { PositionRail } from "../components/PositionRail.js";
+import { ScenarioBar } from "../components/ScenarioBar.js";
+import { GreekTiles, RiskTiles, Tile } from "../components/RiskTiles.js";
+import { AddPositionModal } from "../components/AddPositionModal.js";
+import { ImportModal } from "../components/ImportModal.js";
+import { PayoffChart } from "../charts/PayoffChart.js";
+import { CorrelationHeatmap } from "../charts/CorrelationHeatmap.js";
+import { useShared } from "../context.js";
+import { useNavigate } from "react-router-dom";
+import { formatSignedUsd, formatPercent, formatUsd, todayIso } from "../format.js";
+
+const NO_SHOCK: Shock = { priceShock: 0, volShock: 0, daysForward: 0 };
+
+export function Dashboard() {
+  const {
+    auth,
+    positions,
+    isSample,
+    loading,
+    bookError,
+    add,
+    addMany,
+    remove,
+    reload,
+    tickers,
+    spot,
+    setPrice,
+    live,
+    history,
+    isReal,
+    historyError,
+    feed,
+  } = useShared();
+  const navigate = useNavigate();
+
+  const [shock, setShock] = useState<Shock>(NO_SHOCK);
+  const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [showPrices, setShowPrices] = useState(false);
+
+  const market: MarketSnapshot = useMemo(
+    () => ({
+      spot,
+      riskFreeRate: DEFAULT_RISK_FREE_RATE,
+      asOf: todayIso(),
+    }),
+    [spot],
+  );
+
+  // The unshocked book: the baseline every delta chip is measured against.
+  const baseline = useMemo(() => {
+    if (positions.length === 0) return null;
+    const exposure = bookExposure(positions, market);
+    const conc = concentration(exposure.notionalByTicker);
+
+    let vol: number | null = null;
+    let var95: number | null = null;
+    let var99: number | null = null;
+    let correlation: { tickers: string[]; values: number[][] } | null = null;
+
+    if (history.length >= 1) {
+      try {
+        const aligned = alignSeries(history);
+        const cov = covarianceMatrix(aligned.returns, aligned.tickers);
+        vol = portfolioVolatility(exposure.notionalByTicker, cov);
+        var95 = parametricVar(exposure.notionalByTicker, cov, 0.95).value;
+        var99 = parametricVar(exposure.notionalByTicker, cov, 0.99).value;
+        if (history.length >= 2) {
+          correlation = correlationMatrix(aligned.returns, aligned.tickers);
+        }
+      } catch {
+        // Not enough overlapping history; exposure and Greeks still hold.
+      }
+    }
+
+    return { exposure, conc, vol, var95, var99, correlation };
+  }, [positions, market, history]);
+
+  // The shocked book: everything the sliders drive.
+  const shocked = useMemo(() => {
+    if (positions.length === 0) return null;
+
+    const scenario = runScenario(positions, market, shock);
+    const shockedMarket = shockMarket(market, shock);
+    const shockedPositions = positions.map((p) =>
+      isOption(p) ? { ...p, iv: Math.max(0.001, p.iv + shock.volShock) } : p,
+    );
+    const exposure = bookExposure(shockedPositions, shockedMarket);
+    const conc = concentration(exposure.notionalByTicker);
+
+    let vol: number | null = null;
+    let var95: number | null = null;
+    let var99: number | null = null;
+    let decomposition: ReturnType<typeof riskContributions> = null;
+
+    if (history.length >= 1) {
+      try {
+        const aligned = alignSeries(history);
+        const cov = covarianceMatrix(aligned.returns, aligned.tickers);
+        vol = portfolioVolatility(exposure.notionalByTicker, cov);
+        var95 = parametricVar(exposure.notionalByTicker, cov, 0.95).value;
+        var99 = parametricVar(exposure.notionalByTicker, cov, 0.99).value;
+        decomposition = riskContributions(exposure.notionalByTicker, cov);
+      } catch {
+        // As above.
+      }
+    }
+
+    return { scenario, exposure, conc, vol, var95, var99, decomposition };
+  }, [positions, market, shock, history]);
+
+  const curve = useMemo(
+    () =>
+      positions.length === 0
+        ? []
+        : payoffCurve(positions, market, {
+            steps: 121,
+            volShock: shock.volShock,
+            daysForward: shock.daysForward,
+          }),
+    [positions, market, shock.volShock, shock.daysForward],
+  );
+
+  // Keyed lookup so the exposure table can show risk share alongside notional
+  // weight without reordering — the divergence between the two columns is the
+  // point, and it only reads if the rows stay put.
+  const riskShareByTicker = useMemo(() => {
+    const map = new Map<
+      string,
+      { contributionShare: number; contribution: number }
+    >();
+    for (const c of shocked?.decomposition?.contributions ?? []) {
+      map.set(c.ticker, {
+        contributionShare: c.contributionShare,
+        contribution: c.contribution,
+      });
+    }
+    return map;
+  }, [shocked]);
+
+  const exposureById = useMemo(() => {
+    const map = new Map<string, PositionExposure>();
+    for (const e of shocked?.exposure.positions ?? []) {
+      map.set(e.positionId, e);
+    }
+    return map;
+  }, [shocked]);
+
+  const callouts = useMemo(
+    () =>
+      positions.length === 0
+        ? []
+        : riskCallouts(positions, market, baseline?.conc.breakdown ?? []),
+    [positions, market, baseline],
+  );
+
+  const hasEstimatedIv = positions.some((p) => isOption(p) && p.ivIsEstimate);
+  const isShocked =
+    shock.priceShock !== 0 || shock.volShock !== 0 || shock.daysForward !== 0;
+
+  return (
+    <div className="main">
+      <PositionRail
+        positions={positions}
+        exposures={exposureById}
+        onRemove={remove}
+        onAdd={() => setShowAdd(true)}
+        onImport={() => setShowImport(true)}
+        onConnect={() => navigate("/settings")}
+        onPrices={() => setShowPrices(true)}
+      />
+
+      <div className="analysis">
+        <ScenarioBar shock={shock} live={live && isReal} onChange={setShock} />
+
+        {(isSample || bookError || (positions.length > 0 && !isReal)) && (
+          <div style={{ padding: "0 var(--s4)", paddingTop: "var(--s3)" }}>
+            {bookError && (
+              <div className="notice error">
+                {bookError}
+                <button className="notice-action" onClick={reload}>
+                  Retry now
+                </button>
+              </div>
+            )}
+
+            {isSample && (
+              <div className="notice warn">
+                <strong>Sample book.</strong> These are illustrative positions,
+                not yours — a covered call on AAPL, a protective put on NVDA,
+                and a short SPY strangle. Drag the price slider to see how they
+                move together. Adding your own position replaces them.
+              </div>
+            )}
+
+            {positions.length > 0 && !isReal && !isSample && (
+              <div className="notice warn">
+                Correlation and VaR use generated price history, not real market
+                data.{" "}
+                {auth.status === "authenticated"
+                  ? (historyError ??
+                    "No price history is available for these symbols yet — it may still be loading, or the market-data provider returned nothing for them.")
+                  : "Sign in to compute them from actual closes."}
+                {auth.status === "authenticated" && (
+                  <button className="notice-action" onClick={reload}>
+                    Retry now
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="empty" style={{ padding: "4rem 1rem" }}>
+            <b>Loading your book…</b>
+          </div>
+        ) : positions.length === 0 ? (
+          <div className="empty" style={{ padding: "4rem 1rem" }}>
+            <b>Your book is empty</b>
+            Add a stock and write an option against it, then drag the price
+            slider to watch every metric move together.
+          </div>
+        ) : (
+          <>
+            <div className="section">
+              <h3 className="section-title">
+                Scenario P&amp;L
+                {isShocked && (
+                  <span style={{ color: "var(--ink-muted)" }}>
+                    {" "}
+                    — vs. current market
+                  </span>
+                )}
+              </h3>
+              <div className="tiles">
+                <Tile
+                  label="Book value"
+                  value={formatUsd(shocked?.exposure.marketValue ?? 0, 0)}
+                  hint="Theoretical mark-to-market value of every position under the current scenario."
+                />
+                <Tile
+                  label="Scenario P&L"
+                  value={
+                    <span
+                      className={
+                        (shocked?.scenario.pnl ?? 0) >= 0 ? "gain" : "loss"
+                      }
+                    >
+                      {formatSignedUsd(shocked?.scenario.pnl ?? 0)}
+                    </span>
+                  }
+                  hint="Change in book value under the current price, volatility, and time shock. A full reprice, not a delta approximation."
+                />
+                <Tile
+                  label="Gross exposure"
+                  value={formatUsd(shocked?.exposure.grossNotional ?? 0, 0)}
+                  hint="Sum of absolute delta-equivalent notional. Longs and shorts add rather than cancel."
+                />
+                <Tile
+                  label="Net exposure"
+                  value={formatUsd(shocked?.exposure.netNotional ?? 0, 0)}
+                  hint="Signed delta-equivalent notional. This is what a covered call reduces."
+                />
+                <Tile
+                  label="Diversification"
+                  value={formatPercent(
+                    shocked?.conc.diversificationScore ?? 0,
+                    0,
+                  )}
+                  hint="1.0 means gross exposure is spread evenly across underlyings; 0 means it sits in a single name."
+                />
+              </div>
+            </div>
+
+            <div className="section">
+              <h3 className="section-title">Portfolio risk</h3>
+              <RiskTiles
+                annualizedVolatility={shocked?.vol ?? null}
+                var95={shocked?.var95 ?? null}
+                var99={shocked?.var99 ?? null}
+                historicalVar95={null}
+                sharpe={null}
+                baseline={
+                  isShocked && baseline
+                    ? {
+                        annualizedVolatility: baseline.vol,
+                        var95: baseline.var95,
+                        var99: baseline.var99,
+                      }
+                    : undefined
+                }
+              />
+            </div>
+
+            <div className="section">
+              <h3 className="section-title">Net Greeks — whole book</h3>
+              <GreekTiles
+                greeks={
+                  shocked?.exposure.netGreeks ?? {
+                    delta: 0,
+                    gamma: 0,
+                    theta: 0,
+                    vega: 0,
+                    rho: 0,
+                  }
+                }
+                baseline={
+                  isShocked && baseline ? baseline.exposure.netGreeks : undefined
+                }
+                hasEstimatedIv={hasEstimatedIv}
+              />
+            </div>
+
+            <div className="split">
+              <div className="section">
+                <h3 className="section-title">Combined payoff</h3>
+                <PayoffChart
+                  curve={curve}
+                  breakevens={breakevens(curve)}
+                  currentShock={shock.priceShock}
+                />
+              </div>
+              <div className="section">
+                <h3 className="section-title">Correlation</h3>
+                {baseline?.correlation ? (
+                  <>
+                    <CorrelationHeatmap
+                      tickers={baseline.correlation.tickers}
+                      values={baseline.correlation.values}
+                    />
+                    {isReal && feed === "iex" && (
+                      <p
+                        className="faint"
+                        style={{
+                          fontSize: "0.625rem",
+                          lineHeight: 1.5,
+                          marginBottom: 0,
+                        }}
+                      >
+                        Built from the IEX feed, whose daily closes are the last
+                        print on a single venue rather than a consolidated 4pm
+                        close. Because those prints land at slightly different
+                        moments per symbol, measured correlation is biased low —
+                        and portfolio volatility and VaR with it. Treat these as
+                        a floor on risk, not an estimate. A consolidated-tape
+                        feed removes the bias.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <div className="empty">
+                    <b>Not enough underlyings</b>
+                    Correlation needs at least two tickers.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {callouts.length > 0 && (
+              <div className="section">
+                <h3 className="section-title">Risk callouts</h3>
+                {callouts.map((callout) => (
+                  <div
+                    key={callout.label}
+                    className={`callout ${callout.severity}`}
+                  >
+                    <b>{callout.label}</b>
+                    <span>{callout.detail}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="section">
+              <h3 className="section-title">Exposure by underlying</h3>
+              <div className="scroll-x">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Ticker</th>
+                      <th style={{ textAlign: "right" }}>Δ-equiv shares</th>
+                      <th style={{ textAlign: "right" }}>Notional</th>
+                      <th style={{ textAlign: "right" }}>% of gross</th>
+                      <th
+                        style={{ textAlign: "right" }}
+                        title="Share of portfolio volatility, computed as w×(Σw)/σ. Contributions sum to total volatility, so a name can carry more risk than its size suggests — or less, if it hedges."
+                      >
+                        % of risk
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(shocked?.conc.breakdown ?? []).map((row) => {
+                      const rc = riskShareByTicker.get(row.ticker);
+                      return (
+                        <tr key={row.ticker}>
+                          <td>{row.ticker}</td>
+                          <td className="num" style={{ textAlign: "right" }}>
+                            {(
+                              shocked?.exposure.byTicker[row.ticker] ?? 0
+                            ).toFixed(1)}
+                          </td>
+                          <td className="num" style={{ textAlign: "right" }}>
+                            {formatUsd(row.notional, 0)}
+                          </td>
+                          <td className="num" style={{ textAlign: "right" }}>
+                            {formatPercent(row.weight, 1)}
+                          </td>
+                          <td className="num risk-share-cell">
+                            {rc === undefined ? (
+                              <span className="risk-share-none">—</span>
+                            ) : (
+                              <div className="risk-share">
+                                <span className="risk-share-num">
+                                  {formatPercent(rc.contributionShare, 1)}
+                                </span>
+                                <span
+                                  className="risk-bar-track"
+                                  aria-hidden="true"
+                                >
+                                  <span
+                                    className={
+                                      rc.contributionShare < 0
+                                        ? "risk-bar risk-bar-hedge"
+                                        : "risk-bar"
+                                    }
+                                    style={{
+                                      width: `${Math.min(
+                                        100,
+                                        Math.abs(rc.contributionShare) * 100,
+                                      )}%`,
+                                    }}
+                                  />
+                                </span>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {shocked?.decomposition === null && positions.length > 0 && (
+                <p className="table-note">
+                  Risk contributions are unavailable while the book has no
+                  measurable volatility — a flat or fully hedged book has no risk
+                  to attribute.
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {showAdd && (
+        <AddPositionModal onAdd={add} onClose={() => setShowAdd(false)} />
+      )}
+      {showImport && (
+        <ImportModal onImport={addMany} onClose={() => setShowImport(false)} />
+      )}
+      {showPrices && (
+        <PricesModal
+          tickers={tickers}
+          live={live}
+          spot={spot}
+          onSet={setPrice}
+          onClose={() => setShowPrices(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function PricesModal({
+  tickers,
+  live,
+  spot,
+  onSet,
+  onClose,
+}: {
+  tickers: string[];
+  live: boolean;
+  spot: Record<string, number>;
+  onSet: (ticker: string, price: number) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>Spot prices</h2>
+          <button className="icon" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </div>
+        <div className="modal-body">
+          <p className="faint" style={{ fontSize: "0.625rem", marginTop: 0 }}>
+            {live
+              ? "Live quotes from your connected data source. Edits apply to this session only."
+              : "Entered by hand. Sign in to pull live quotes automatically."}
+          </p>
+          {tickers.length === 0 ? (
+            <div className="empty">Add a position first.</div>
+          ) : (
+            tickers.map((ticker) => (
+              <div className="field" key={ticker}>
+                <label htmlFor={`price-${ticker}`}>{ticker}</label>
+                <input
+                  id={`price-${ticker}`}
+                  type="number"
+                  value={spot[ticker] ?? 0}
+                  onChange={(e) => onSet(ticker, Number(e.target.value))}
+                />
+              </div>
+            ))
+          )}
+        </div>
+        <div className="modal-foot">
+          <button className="primary" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

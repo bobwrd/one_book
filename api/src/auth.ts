@@ -69,6 +69,7 @@ export class AuthError extends Error {
 export async function consumeLoginToken(
   env: Env,
   token: string,
+  userAgent?: string,
 ): Promise<{ sessionId: string; session: SessionData }> {
   const tokenHash = await sha256Hex(token);
 
@@ -131,7 +132,32 @@ export async function consumeLoginToken(
     expirationTtl: SESSION_TTL_SECONDS,
   });
 
+  // KV stays the source of truth for the payload and TTL. This row exists only
+  // so "which sessions belong to this user" is answerable — KV cannot be
+  // enumerated by user.
+  await env.DB.prepare(
+    "INSERT INTO sessions (id, user_id, created_at, last_seen_at, user_agent) VALUES (?, ?, ?, ?, ?)",
+  )
+    .bind(
+      sessionId,
+      user.id,
+      session.createdAt,
+      session.createdAt,
+      userAgent ?? null,
+    )
+    .run();
+
   return { sessionId, session };
+}
+
+/**
+ * The caller's own session id, read from the cookie.
+ *
+ * The client cannot read an httpOnly cookie, so anything that needs to mark
+ * "this is the session you're using right now" has to resolve it server-side.
+ */
+export function currentSessionId(c: AppContext): string | undefined {
+  return getCookie(c, SESSION_COOKIE);
 }
 
 export function setSessionCookie(c: AppContext, sessionId: string): void {
@@ -146,7 +172,12 @@ export function setSessionCookie(c: AppContext, sessionId: string): void {
 
 export async function destroySession(c: AppContext): Promise<void> {
   const sessionId = getCookie(c, SESSION_COOKIE);
-  if (sessionId) await c.env.KV.delete(`session:${sessionId}`);
+  if (sessionId) {
+    await c.env.KV.delete(`session:${sessionId}`);
+    await c.env.DB.prepare("DELETE FROM sessions WHERE id = ?")
+      .bind(sessionId)
+      .run();
+  }
   setCookie(c, SESSION_COOKIE, "", {
     httpOnly: true,
     secure: true,

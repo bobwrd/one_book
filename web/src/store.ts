@@ -13,15 +13,33 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Position, PriceSeries } from "@onebook/finance";
 import {
   addPositions,
+  assignPositionToGroup,
+  createGroup,
   createPortfolio,
+  deleteGroup,
   deletePosition,
+  fetchFxRate,
+  fetchGroups,
+  fetchNews,
   fetchPortfolio,
   fetchPortfolios,
+  fetchPreferences,
   fetchHistory,
   fetchSession,
+  fetchSessions,
   fetchSpot,
+  fetchTransactions,
+  isApiConfigured,
   probeApi,
+  renameGroup,
+  unassignPositionFromGroup,
+  updatePreferences,
   logout as apiLogout,
+  type ApiGroup,
+  type ApiSession,
+  type ApiTransaction,
+  type NewsItem,
+  type Preferences,
   type SessionUser,
 } from "./api.js";
 import { SAMPLE_SPOT, sampleBook } from "./sampleBook.js";
@@ -31,6 +49,9 @@ const POSITIONS_KEY = "onebook.positions.v1";
 const SPOT_KEY = "onebook.spot.v1";
 const THEME_KEY = "onebook.theme.v1";
 const SEEDED_KEY = "onebook.seeded.v1";
+const GROUPS_KEY = "onebook.groups.v1";
+const TRANSACTIONS_KEY = "onebook.transactions.v1";
+const PREFS_KEY = "onebook.prefs.v1";
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -117,6 +138,65 @@ export interface BookState {
 const isDemo = (p: { id: string }) => p.id.startsWith("demo-");
 
 /**
+ * A ledger row, in the shape both modes produce.
+ *
+ * Signed in these come from the API; signed out they are written locally when
+ * a position is added, so the History page is meaningful in demo mode too
+ * rather than being a signed-in-only feature.
+ */
+export interface LocalTransaction {
+  id: string;
+  ticker: string;
+  positionType: "stock" | "option" | "bond";
+  side: "buy" | "sell";
+  quantity: number;
+  price: number;
+  fee: number;
+  source: string;
+  executedAt: number;
+}
+
+/**
+ * localStorage has no change events for the same document, so local-mode
+ * writers notify readers directly. Keeps `useTransactions` in sync with an
+ * `add()` that happened in `useLocalBook`.
+ */
+const localTxListeners = new Set<() => void>();
+
+function notifyLocalTransactions(): void {
+  for (const listener of localTxListeners) listener();
+}
+
+function readLocalTransactions(): LocalTransaction[] {
+  return read<LocalTransaction[]>(TRANSACTIONS_KEY, []);
+}
+
+/** The ledger row a newly added position implies. Mirrors the API's rule. */
+function positionToLocalTransaction(p: Position): LocalTransaction {
+  const size = p.type === "bond" ? p.faceValue : p.quantity;
+  return {
+    id: `txn-${p.id}`,
+    ticker: p.ticker,
+    positionType: p.type,
+    side: size >= 0 ? "buy" : "sell",
+    quantity: Math.abs(size),
+    price: p.type === "bond" ? p.price : p.costBasis,
+    fee: 0,
+    source: "manual",
+    executedAt: Date.now(),
+  };
+}
+
+function appendLocalTransactions(positions: Position[]): void {
+  if (positions.length === 0) return;
+  write(TRANSACTIONS_KEY, [
+    ...readLocalTransactions(),
+    ...positions.map(positionToLocalTransaction),
+  ]);
+  notifyLocalTransactions();
+}
+
+/**
  * Signed-out book. Seeds the sample portfolio exactly once, so clearing it
  * stays cleared instead of the demo reappearing on every reload.
  */
@@ -139,6 +219,7 @@ function useLocalBook(): BookState {
   // data would silently corrupt every number on screen.
   const add = useCallback((position: Position) => {
     setPositions((current) => [...current.filter((p) => !isDemo(p)), position]);
+    appendLocalTransactions([position]);
   }, []);
 
   const addMany = useCallback((incoming: Position[]) => {
@@ -146,6 +227,7 @@ function useLocalBook(): BookState {
       ...current.filter((p) => !isDemo(p)),
       ...incoming,
     ]);
+    appendLocalTransactions(incoming);
   }, []);
 
   const remove = useCallback((id: string) => {
@@ -169,24 +251,39 @@ function useLocalBook(): BookState {
 }
 
 function toApiPosition(p: Position) {
-  return p.type === "option"
-    ? {
-        type: "option" as const,
-        ticker: p.ticker,
-        quantity: p.quantity,
-        costBasis: p.costBasis,
-        strike: p.strike,
-        expiry: p.expiry,
-        right: p.right,
-        contractMultiplier: p.contractMultiplier,
-        iv: p.iv,
-      }
-    : {
-        type: "stock" as const,
-        ticker: p.ticker,
-        quantity: p.quantity,
-        costBasis: p.costBasis,
-      };
+  if (p.type === "option") {
+    return {
+      type: "option" as const,
+      ticker: p.ticker,
+      quantity: p.quantity,
+      costBasis: p.costBasis,
+      currency: p.currency,
+      strike: p.strike,
+      expiry: p.expiry,
+      right: p.right,
+      contractMultiplier: p.contractMultiplier,
+      iv: p.iv,
+    };
+  }
+  if (p.type === "bond") {
+    return {
+      type: "bond" as const,
+      ticker: p.ticker,
+      costBasis: p.costBasis,
+      currency: p.currency,
+      couponRate: p.couponRate,
+      maturity: p.maturity,
+      faceValue: p.faceValue,
+      price: p.price,
+    };
+  }
+  return {
+    type: "stock" as const,
+    ticker: p.ticker,
+    quantity: p.quantity,
+    costBasis: p.costBasis,
+    currency: p.currency,
+  };
 }
 
 /** Signed-in book, backed by the API. */
@@ -464,4 +561,392 @@ export function usePriceHistory(
   }, [remote, tickerKey, tickers.map((t) => spot[t]).join(",")]);
 
   return { history, isReal: remote !== null, error, feed };
+}
+
+// ------------------------------------------------------------------ groups
+
+export interface GroupsState {
+  groups: ApiGroup[];
+  loading: boolean;
+  create: (name: string, color: string) => Promise<void>;
+  update: (id: string, changes: { name?: string; color?: string }) => Promise<void>;
+  remove: (id: string) => Promise<void>;
+  assign: (groupId: string, positionId: string) => Promise<void>;
+  unassign: (groupId: string, positionId: string) => Promise<void>;
+}
+
+/** Groups, in the same two interchangeable modes as the book itself. */
+export function useGroups(
+  auth: AuthState,
+  portfolioId: string | null,
+): GroupsState {
+  const isRemote = auth.status === "authenticated" && portfolioId !== null;
+  const [groups, setGroups] = useState<ApiGroup[]>(() =>
+    read<ApiGroup[]>(GROUPS_KEY, []),
+  );
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!isRemote) {
+      setGroups(read<ApiGroup[]>(GROUPS_KEY, []));
+      return;
+    }
+    setLoading(true);
+    try {
+      setGroups(await fetchGroups(portfolioId!));
+    } catch {
+      // A groups failure must not take the sidebar down with it.
+      setGroups([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [isRemote, portfolioId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  /** Apply a change locally and persist it. Local mode's whole write path. */
+  const writeLocal = useCallback((next: ApiGroup[]) => {
+    setGroups(next);
+    write(GROUPS_KEY, next);
+  }, []);
+
+  const create = useCallback(
+    async (name: string, color: string) => {
+      if (isRemote) {
+        await createGroup(portfolioId!, name, color);
+        await load();
+        return;
+      }
+      writeLocal([
+        ...read<ApiGroup[]>(GROUPS_KEY, []),
+        {
+          id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          name,
+          color,
+          created_at: Date.now(),
+          positionIds: [],
+        },
+      ]);
+    },
+    [isRemote, portfolioId, load, writeLocal],
+  );
+
+  const update = useCallback(
+    async (id: string, changes: { name?: string; color?: string }) => {
+      if (isRemote) {
+        await renameGroup(id, changes);
+        await load();
+        return;
+      }
+      writeLocal(
+        read<ApiGroup[]>(GROUPS_KEY, []).map((g) =>
+          g.id === id ? { ...g, ...changes } : g,
+        ),
+      );
+    },
+    [isRemote, load, writeLocal],
+  );
+
+  const remove = useCallback(
+    async (id: string) => {
+      if (isRemote) {
+        await deleteGroup(id);
+        await load();
+        return;
+      }
+      writeLocal(read<ApiGroup[]>(GROUPS_KEY, []).filter((g) => g.id !== id));
+    },
+    [isRemote, load, writeLocal],
+  );
+
+  const assign = useCallback(
+    async (groupId: string, positionId: string) => {
+      if (isRemote) {
+        await assignPositionToGroup(groupId, positionId);
+        await load();
+        return;
+      }
+      // A position belongs to at most one group, matching the server's PK.
+      writeLocal(
+        read<ApiGroup[]>(GROUPS_KEY, []).map((g) => ({
+          ...g,
+          positionIds:
+            g.id === groupId
+              ? [...new Set([...g.positionIds, positionId])]
+              : g.positionIds.filter((id) => id !== positionId),
+        })),
+      );
+    },
+    [isRemote, load, writeLocal],
+  );
+
+  const unassign = useCallback(
+    async (groupId: string, positionId: string) => {
+      if (isRemote) {
+        await unassignPositionFromGroup(groupId, positionId);
+        await load();
+        return;
+      }
+      writeLocal(
+        read<ApiGroup[]>(GROUPS_KEY, []).map((g) =>
+          g.id === groupId
+            ? { ...g, positionIds: g.positionIds.filter((id) => id !== positionId) }
+            : g,
+        ),
+      );
+    },
+    [isRemote, load, writeLocal],
+  );
+
+  return { groups, loading, create, update, remove, assign, unassign };
+}
+
+// ------------------------------------------------------------ transactions
+
+export interface TransactionsState {
+  transactions: LocalTransaction[];
+  loading: boolean;
+  reload: () => void;
+}
+
+function toLocalTransaction(t: ApiTransaction): LocalTransaction {
+  return {
+    id: t.id,
+    ticker: t.ticker,
+    positionType: t.position_type,
+    side: t.side,
+    quantity: t.quantity,
+    price: t.price,
+    fee: t.fee,
+    source: t.source,
+    executedAt: t.executed_at,
+  };
+}
+
+/** The trade ledger, in both modes. */
+export function useTransactions(
+  auth: AuthState,
+  portfolioId: string | null,
+): TransactionsState {
+  const isRemote = auth.status === "authenticated" && portfolioId !== null;
+  const [transactions, setTransactions] = useState<LocalTransaction[]>(() =>
+    readLocalTransactions(),
+  );
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!isRemote) {
+      setTransactions(readLocalTransactions());
+      return;
+    }
+    setLoading(true);
+    try {
+      const rows = await fetchTransactions(portfolioId!);
+      setTransactions(rows.map(toLocalTransaction));
+    } catch {
+      setTransactions([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [isRemote, portfolioId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // In local mode, adding a position writes a ledger row from a different
+  // hook instance; subscribe so this one sees it without a reload.
+  useEffect(() => {
+    if (isRemote) return;
+    const listener = () => setTransactions(readLocalTransactions());
+    localTxListeners.add(listener);
+    return () => {
+      localTxListeners.delete(listener);
+    };
+  }, [isRemote]);
+
+  return { transactions, loading, reload: () => void load() };
+}
+
+// ------------------------------------------------------------- preferences
+
+const DEFAULT_PREFERENCES: Preferences = {
+  displayName: null,
+  theme: "dark",
+  currency: "USD",
+  compactNumbers: false,
+  showUnrealizedPnl: true,
+};
+
+export interface PreferencesState {
+  preferences: Preferences;
+  loading: boolean;
+  update: (changes: Partial<Preferences>) => Promise<void>;
+}
+
+/**
+ * User preferences.
+ *
+ * Theme stays owned by `useTheme` in both modes — it is applied to the
+ * document root and must survive a signed-out reload — so this hook carries
+ * the rest and mirrors theme rather than driving it.
+ */
+export function usePreferences(auth: AuthState): PreferencesState {
+  const isRemote = auth.status === "authenticated";
+  const [preferences, setPreferences] = useState<Preferences>(() => ({
+    ...DEFAULT_PREFERENCES,
+    ...read<Partial<Preferences>>(PREFS_KEY, {}),
+  }));
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isRemote) {
+      setPreferences({
+        ...DEFAULT_PREFERENCES,
+        ...read<Partial<Preferences>>(PREFS_KEY, {}),
+      });
+      return;
+    }
+    setLoading(true);
+    void (async () => {
+      try {
+        setPreferences(await fetchPreferences());
+      } catch {
+        setPreferences(DEFAULT_PREFERENCES);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [isRemote]);
+
+  const update = useCallback(
+    async (changes: Partial<Preferences>) => {
+      // Optimistic: a preference toggle that lags a round trip feels broken.
+      setPreferences((current) => ({ ...current, ...changes }));
+
+      if (!isRemote) {
+        write(PREFS_KEY, {
+          ...read<Partial<Preferences>>(PREFS_KEY, {}),
+          ...changes,
+        });
+        return;
+      }
+      try {
+        setPreferences(await updatePreferences(changes));
+      } catch {
+        // Keep the optimistic value; the next load reconciles it.
+      }
+    },
+    [isRemote],
+  );
+
+  return { preferences, loading, update };
+}
+
+// ---------------------------------------------------------------- sessions
+
+/** Active sessions. Remote-only — sessions are meaningless signed out. */
+export function useSessions(auth: AuthState): {
+  sessions: ApiSession[];
+  loading: boolean;
+  reload: () => void;
+} {
+  const isRemote = auth.status === "authenticated";
+  const [sessions, setSessions] = useState<ApiSession[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!isRemote) {
+      setSessions([]);
+      return;
+    }
+    setLoading(true);
+    try {
+      setSessions(await fetchSessions());
+    } catch {
+      setSessions([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [isRemote]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return { sessions, loading, reload: () => void load() };
+}
+
+// -------------------------------------------------------------------- news
+
+/**
+ * Headlines for one ticker. Always remote: there is nothing useful to fake
+ * here that would beat an honest empty state.
+ */
+export function useNews(ticker: string | undefined): {
+  items: NewsItem[];
+  available: boolean;
+  loading: boolean;
+} {
+  const [items, setItems] = useState<NewsItem[]>([]);
+  const [available, setAvailable] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!ticker || !isApiConfigured()) {
+      setItems([]);
+      setAvailable(false);
+      return;
+    }
+    setLoading(true);
+    void (async () => {
+      try {
+        const result = await fetchNews(ticker);
+        setItems(result.items);
+        setAvailable(result.available);
+      } catch {
+        setItems([]);
+        setAvailable(false);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [ticker]);
+
+  return { items, available, loading };
+}
+
+// ---------------------------------------------------------------------- fx
+
+/** USD -> `currency`. Divide a foreign amount by `rate` to reach USD. */
+export function useFxRate(currency: string): {
+  rate: number;
+  stale: boolean;
+  available: boolean;
+} {
+  const [state, setState] = useState({
+    rate: 1,
+    stale: false,
+    available: true,
+  });
+
+  useEffect(() => {
+    if (currency === "USD" || !isApiConfigured()) {
+      setState({ rate: 1, stale: false, available: currency === "USD" });
+      return;
+    }
+    void (async () => {
+      try {
+        const result = await fetchFxRate(currency);
+        setState({ rate: result.rate, stale: result.stale, available: true });
+      } catch {
+        // Unconverted beats a wrong conversion, and `available` says so.
+        setState({ rate: 1, stale: false, available: false });
+      }
+    })();
+  }, [currency]);
+
+  return state;
 }

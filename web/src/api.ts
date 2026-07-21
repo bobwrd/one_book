@@ -108,6 +108,9 @@ export async function fetchConnections(): Promise<Connection[]> {
       broker: string;
       account_label: string | null;
       created_at: number;
+      last_synced_at: number | null;
+      lastError: string | null;
+      lastErrorAt: number | null;
     }[];
   }>("/connections");
 
@@ -115,6 +118,9 @@ export async function fetchConnections(): Promise<Connection[]> {
     broker: c.broker,
     accountLabel: c.account_label ?? undefined,
     connectedAt: c.created_at,
+    lastSyncedAt: c.last_synced_at ?? undefined,
+    lastError: c.lastError ?? undefined,
+    lastErrorAt: c.lastErrorAt ?? undefined,
   }));
 }
 
@@ -195,16 +201,21 @@ export async function createPortfolio(name: string): Promise<PortfolioSummary> {
 
 export interface ApiPosition {
   id: string;
-  type: "stock" | "option";
+  type: "stock" | "option" | "bond";
   ticker: string;
   quantity: number;
   costBasis: number;
+  currency?: string;
   strike?: number;
   expiry?: string;
   right?: "call" | "put";
   contractMultiplier?: number;
   iv?: number;
   ivIsEstimate?: boolean;
+  couponRate?: number;
+  maturity?: string;
+  faceValue?: number;
+  price?: number;
   source?: string;
 }
 
@@ -280,4 +291,245 @@ export async function fetchHistory(
   feed?: string | null;
 }> {
   return request(`/portfolios/${portfolioId}/history`);
+}
+
+// ---------------------------------------------------------------- groups
+
+export interface ApiGroup {
+  id: string;
+  name: string;
+  color: string;
+  created_at: number;
+  positionIds: string[];
+}
+
+export async function fetchGroups(portfolioId: string): Promise<ApiGroup[]> {
+  const data = await request<{ groups: ApiGroup[] }>(
+    `/portfolios/${portfolioId}/groups`,
+  );
+  return data.groups;
+}
+
+export async function createGroup(
+  portfolioId: string,
+  name: string,
+  color: string,
+): Promise<ApiGroup> {
+  return request(`/portfolios/${portfolioId}/groups`, {
+    method: "POST",
+    body: JSON.stringify({ name, color }),
+  });
+}
+
+export async function renameGroup(
+  groupId: string,
+  changes: { name?: string; color?: string },
+): Promise<void> {
+  await request(`/groups/${groupId}`, {
+    method: "PATCH",
+    body: JSON.stringify(changes),
+  });
+}
+
+export async function deleteGroup(groupId: string): Promise<void> {
+  await request(`/groups/${groupId}`, { method: "DELETE" });
+}
+
+export async function assignPositionToGroup(
+  groupId: string,
+  positionId: string,
+): Promise<void> {
+  await request(`/groups/${groupId}/positions/${positionId}`, { method: "PUT" });
+}
+
+export async function unassignPositionFromGroup(
+  groupId: string,
+  positionId: string,
+): Promise<void> {
+  await request(`/groups/${groupId}/positions/${positionId}`, {
+    method: "DELETE",
+  });
+}
+
+// ---------------------------------------------------------- transactions
+
+export interface ApiTransaction {
+  id: string;
+  ticker: string;
+  position_type: "stock" | "option" | "bond";
+  side: "buy" | "sell";
+  quantity: number;
+  price: number;
+  currency: string;
+  fee: number;
+  strike: number | null;
+  expiry: string | null;
+  right: "call" | "put" | null;
+  source: string;
+  executed_at: number;
+}
+
+export async function fetchTransactions(
+  portfolioId: string,
+  ticker?: string,
+): Promise<ApiTransaction[]> {
+  const query = ticker ? `?ticker=${encodeURIComponent(ticker)}` : "";
+  const data = await request<{ transactions: ApiTransaction[] }>(
+    `/portfolios/${portfolioId}/transactions${query}`,
+  );
+  return data.transactions;
+}
+
+export async function recordTransaction(
+  portfolioId: string,
+  transaction: {
+    ticker: string;
+    positionType: "stock" | "option" | "bond";
+    side: "buy" | "sell";
+    quantity: number;
+    price: number;
+    currency?: string;
+    fee?: number;
+    executedAt?: number;
+  },
+): Promise<{ id: string }> {
+  return request(`/portfolios/${portfolioId}/transactions`, {
+    method: "POST",
+    body: JSON.stringify(transaction),
+  });
+}
+
+export interface RealizedSummary {
+  year: number;
+  realized: {
+    ticker: string;
+    quantity: number;
+    proceeds: number;
+    costBasis: number;
+    realizedPnl: number;
+    openedAt: string;
+    closedAt: string;
+  }[];
+  totalRealizedPnl: number;
+}
+
+export async function fetchRealized(
+  portfolioId: string,
+): Promise<RealizedSummary> {
+  return request(`/portfolios/${portfolioId}/realized`);
+}
+
+// ------------------------------------------------- public reference data
+
+export interface NewsItem {
+  id: string;
+  headline: string;
+  summary: string | null;
+  source: string;
+  url: string;
+  publishedAt: number;
+}
+
+export async function fetchNews(
+  ticker: string,
+): Promise<{ items: NewsItem[]; available: boolean; stale: boolean }> {
+  return request(`/instruments/${encodeURIComponent(ticker)}/news`);
+}
+
+export async function fetchFxRate(
+  currency: string,
+): Promise<{ currency: string; rate: number; stale: boolean }> {
+  return request(`/fx/${encodeURIComponent(currency)}`);
+}
+
+// ------------------------------------------------------------- account
+
+export interface Preferences {
+  displayName: string | null;
+  theme: "dark" | "light";
+  currency: string;
+  compactNumbers: boolean;
+  showUnrealizedPnl: boolean;
+}
+
+export async function fetchPreferences(): Promise<Preferences> {
+  return request("/me/preferences");
+}
+
+export async function updatePreferences(
+  changes: Partial<Preferences>,
+): Promise<Preferences> {
+  return request("/me/preferences", {
+    method: "PATCH",
+    body: JSON.stringify(changes),
+  });
+}
+
+export interface ApiSession {
+  id: string;
+  createdAt: number;
+  lastSeenAt: number;
+  userAgent: string | null;
+  isCurrent: boolean;
+}
+
+export async function fetchSessions(): Promise<ApiSession[]> {
+  const data = await request<{ sessions: ApiSession[] }>("/me/sessions");
+  return data.sessions;
+}
+
+export async function revokeSession(
+  sessionId: string,
+): Promise<{ signedOut: boolean }> {
+  return request(`/me/sessions/${sessionId}`, { method: "DELETE" });
+}
+
+export async function deleteAccount(): Promise<void> {
+  await request("/me", { method: "DELETE" });
+}
+
+// -------------------------------------------------------------- exports
+
+/**
+ * File downloads bypass `request<T>()`: the response is a file, not JSON, so
+ * the JSON-parse path there would reject a perfectly good export.
+ */
+async function downloadFile(path: string, filename: string): Promise<void> {
+  if (apiAvailable === false) throw new ApiUnavailableError();
+
+  const response = await fetch(`${API_ORIGIN}${path}`, {
+    credentials: "include",
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(
+      body.error ?? `Export failed with ${response.status}.`,
+      response.status,
+    );
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  // Revoking immediately would race the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function downloadExportCsv(portfolioId: string): Promise<void> {
+  await downloadFile(
+    `/portfolios/${portfolioId}/export.csv`,
+    "onebook-export.csv",
+  );
+}
+
+export async function downloadTaxReportPdf(portfolioId: string): Promise<void> {
+  await downloadFile(
+    `/portfolios/${portfolioId}/export/tax-report.pdf`,
+    "onebook-tax-report.pdf",
+  );
 }

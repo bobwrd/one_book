@@ -19,7 +19,7 @@ import type {
   OptionPosition,
   Position,
 } from "./types.js";
-import { ZERO_GREEKS, isOption } from "./types.js";
+import { ZERO_GREEKS, isBond, isOption } from "./types.js";
 
 export interface PositionExposure {
   positionId: string;
@@ -99,6 +99,25 @@ export function positionExposure(
   position: Position,
   market: MarketSnapshot,
 ): PositionExposure {
+  // Bonds resolve before the spot lookup on purpose: no market-data provider
+  // quotes them, so the position's own mark is the only valuation input and a
+  // missing spot must not skip the position.
+  if (isBond(position)) {
+    const fxRate = market.fxRates?.[position.currency] ?? 1; // quote per 1 USD
+    const markPer100 = market.spot[position.ticker] ?? position.price;
+    const notionalLocal = position.faceValue * (markPer100 / 100);
+    const notionalUsd = notionalLocal / fxRate;
+    return {
+      positionId: position.id,
+      ticker: position.ticker,
+      // "Delta-equivalent shares of an underlying" has no meaning for a bond.
+      shareEquivalents: 0,
+      notional: notionalUsd,
+      greeks: ZERO_GREEKS,
+      marketValue: notionalUsd,
+    };
+  }
+
   const spot = market.spot[position.ticker];
   if (spot === undefined) throw new MissingPriceError(position.ticker);
 

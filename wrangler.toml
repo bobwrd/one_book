@@ -48,6 +48,12 @@ run_worker_first = [
   "/connections/*",
   "/connect/*",
   "/callback/*",
+  "/instruments/*/news",
+  "/fx/*",
+  "/me",
+  "/me/*",
+  "/groups",
+  "/groups/*",
 ]
 
 [vars]

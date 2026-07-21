@@ -7,7 +7,7 @@
  */
 
 import type { Position, PositionExposure } from "@onebook/finance";
-import { isOption } from "@onebook/finance";
+import { isBond, isOption } from "@onebook/finance";
 import { daysUntil, formatExpiry, formatShares, formatUsd } from "../format.js";
 
 interface Props {
@@ -17,6 +17,7 @@ interface Props {
   onAdd: () => void;
   onImport: () => void;
   onConnect: () => void;
+  onPrices: () => void;
 }
 
 export function PositionRail({
@@ -26,6 +27,7 @@ export function PositionRail({
   onAdd,
   onImport,
   onConnect,
+  onPrices,
 }: Props) {
   return (
     <div className="rail">
@@ -38,6 +40,9 @@ export function PositionRail({
         </button>
         <button onClick={onConnect} title="Connect a brokerage account">
           Connect
+        </button>
+        <button onClick={onPrices} title="View and edit spot prices">
+          Prices
         </button>
       </div>
 
@@ -72,20 +77,24 @@ function PositionRow({
   onRemove: () => void;
 }) {
   const option = isOption(position);
+  const bond = isBond(position);
   const dte = option ? daysUntil(position.expiry) : null;
   const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
+
+  // Bonds are sized by face amount, not a share count, so the size label reads
+  // as par rather than shares.
+  const size = option
+    ? `${signed(position.quantity)} ${position.right === "call" ? "C" : "P"}${position.strike}`
+    : bond
+      ? `${signed(position.faceValue)} par`
+      : `${signed(position.quantity)} sh`;
 
   return (
     <div className="position">
       <div style={{ minWidth: 0 }}>
         <div className="position-sym">
           {position.ticker}
-          <span className="muted">
-            {" "}
-            {option
-              ? `${signed(position.quantity)} ${position.right === "call" ? "C" : "P"}${position.strike}`
-              : `${signed(position.quantity)} sh`}
-          </span>
+          <span className="muted"> {size}</span>
         </div>
 
         <div className="position-meta">
@@ -101,6 +110,14 @@ function PositionRow({
               {" · "}
               {(position.iv * 100).toFixed(0)}%
               {position.ivIsEstimate && <span className="tag warn"> est</span>}
+              {" · "}
+            </>
+          )}
+          {bond && (
+            <>
+              {(position.couponRate * 100).toFixed(2)}%
+              {" · "}
+              {formatExpiry(position.maturity)}
               {" · "}
             </>
           )}

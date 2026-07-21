@@ -53,6 +53,7 @@
   --s8: 2rem;
 
   --rail-w: 264px;
+  --sidebar-w: 216px;
   --topbar-h: 52px;
 
   --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
@@ -140,8 +141,17 @@ th.num {
 
 .app {
   display: grid;
-  grid-template-rows: var(--topbar-h) 1fr auto;
+  grid-template-columns: var(--sidebar-w) 1fr;
   height: 100%;
+  min-height: 0;
+}
+
+/* Everything right of the sidebar: top strip, the active route, footer. */
+.shell {
+  display: grid;
+  grid-template-rows: var(--topbar-h) 1fr auto;
+  min-width: 0;
+  min-height: 0;
 }
 
 .topbar {
@@ -942,6 +952,397 @@ tbody tr:hover {
   display: inline-block;
 }
 
+/* A failed connection. Borrows .notice.error's red, which is already the
+   established non-P&L error color. */
+.dot.error {
+  background: var(--loss);
+}
+
+.connection-error {
+  color: var(--loss);
+}
+
+/* ---------------------------------------------------------- sidebar */
+
+.sidebar {
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  padding: var(--s3);
+  min-height: 0;
+}
+
+.sidebar-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.sidebar-total {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-total-value {
+  font-family: var(--mono);
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.sidebar-total small {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  color: var(--ink-faint);
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar-link {
+  display: block;
+  padding: var(--s2) var(--s3);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+
+.sidebar-link:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.sidebar-link.active {
+  background: var(--surface-active);
+  color: var(--ink);
+}
+
+.sidebar-section-title {
+  font-size: 0.5625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  margin-bottom: var(--s2);
+}
+
+.sidebar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s1) var(--s2);
+  font-size: 0.6875rem;
+  width: 100%;
+}
+
+.sidebar-row-button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.sidebar-row-button:hover {
+  background: var(--surface-hover);
+}
+
+.sidebar-row-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-row-value {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  color: var(--ink-faint);
+}
+
+.sidebar-sublist {
+  display: flex;
+  flex-direction: column;
+  padding-left: var(--s4);
+}
+
+.sidebar-sublink {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  color: var(--ink-muted);
+  text-decoration: none;
+  padding: 2px var(--s2);
+}
+
+.sidebar-sublink:hover {
+  color: var(--ink);
+}
+
+.sidebar-empty {
+  font-size: 0.625rem;
+  color: var(--ink-faint);
+  margin: 0 0 var(--s2);
+}
+
+.sidebar-action {
+  width: 100%;
+  margin-top: var(--s1);
+  font-size: 0.6875rem;
+}
+
+.sidebar-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+/* Group color swatches. Every value is an existing token — no new colors. */
+.swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  border: none;
+  padding: 0;
+  flex: none;
+  cursor: pointer;
+  background: var(--primary);
+}
+
+.swatch-olive {
+  background: var(--primary);
+}
+.swatch-teal {
+  background: var(--chart-line);
+}
+.swatch-violet {
+  background: var(--corr-pos);
+}
+.swatch-amber {
+  background: var(--warn);
+}
+.swatch-slate {
+  background: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------- pages */
+
+.page {
+  overflow-y: auto;
+  min-width: 0;
+  padding: var(--s4);
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+  flex-wrap: wrap;
+}
+
+.page-head h2 {
+  font-size: 0.9375rem;
+  margin: 0;
+  margin-right: auto;
+}
+
+.page-head input[type="search"] {
+  width: 200px;
+}
+
+.toggle-group {
+  display: flex;
+  gap: 1px;
+}
+
+.toggle-group button.active {
+  background: var(--surface-active);
+  color: var(--ink);
+}
+
+.row-link {
+  cursor: pointer;
+}
+
+.row-link:hover {
+  background: var(--surface-hover);
+}
+
+/* --------------------------------------------------------- history */
+
+.trade-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.trade-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: 0.75rem;
+}
+
+.trade-side {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  color: var(--ink-muted);
+}
+
+.trade-ticker {
+  font-weight: 600;
+}
+
+.trade-card-body {
+  display: flex;
+  gap: var(--s6);
+  margin-top: var(--s2);
+}
+
+.trade-card-body > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.trade-card-body small {
+  font-size: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+
+.trade-card-body span {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+}
+
+.trade-card-foot {
+  margin-top: var(--s2);
+  font-size: 0.625rem;
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------- news */
+
+.news-item {
+  display: block;
+  padding: var(--s3);
+  border-bottom: 1px solid var(--border-subtle);
+  text-decoration: none;
+  color: inherit;
+}
+
+.news-item:hover {
+  background: var(--surface-hover);
+}
+
+.news-meta {
+  font-size: 0.5625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+.news-headline {
+  font-size: 0.8125rem;
+  margin-top: 2px;
+}
+
+.news-summary {
+  font-size: 0.6875rem;
+  color: var(--ink-muted);
+  margin-top: 2px;
+}
+
+/* ----------------------------------------------------------- groups */
+
+.group-block {
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.group-head input {
+  flex: 1;
+}
+
+.group-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  margin-top: var(--s2);
+  font-size: 0.625rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px var(--s2);
+  border-radius: 10px;
+  background: var(--surface-active);
+  font-family: var(--mono);
+  font-size: 0.625rem;
+}
+
+.group-assign-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s1) 0;
+  font-size: 0.6875rem;
+}
+
+/* An inline retry beside the message that explains why it is needed. */
+.notice-action {
+  margin-left: var(--s2);
+  font-size: 0.625rem;
+}
+
+/* A checkbox belongs beside its text, not stacked above it the way `.field`
+   lays out a labelled input. */
+.field-check label {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 0.6875rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.field-check input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.chart-legend {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  color: var(--ink-faint);
+  padding: 0 var(--s2);
+}
+
 /* ------------------------------------------------------- responsive */
 
 @media (max-width: 900px) {
@@ -952,6 +1353,13 @@ tbody tr:hover {
   .app {
     height: auto;
     min-height: 100%;
+    /* The sidebar stacks above the shell rather than squeezing it. */
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
   }
 
   .main {

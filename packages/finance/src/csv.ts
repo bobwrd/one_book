@@ -8,8 +8,9 @@
  * silently guesses on ambiguity.
  */
 
+import type { LedgerTransaction } from "./ledger.js";
 import type { OptionRight, Position } from "./types.js";
-import { DEFAULT_CONTRACT_MULTIPLIER } from "./types.js";
+import { DEFAULT_CONTRACT_MULTIPLIER, isBond, isOption } from "./types.js";
 
 export type CsvField =
   | "ticker"
@@ -338,4 +339,123 @@ export function importCsv(
   }
   const mapping = inferMapping(rows[0]);
   return rowsToPositions(rows, mapping, opts);
+}
+
+/**
+ * Quote a single cell. Only the characters that would otherwise break the
+ * parse get quoted, which keeps the common case readable in a text editor.
+ */
+function csvCell(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  const s = String(value);
+  if (!/[",\r\n]/.test(s)) return s;
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+function csvRows(header: string[], rows: (string | number | null)[][]): string {
+  return [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\n") + "\n";
+}
+
+/**
+ * Export positions. Header names match the aliases `inferMapping` recognizes,
+ * so a file exported here re-imports through `importCsv` without a manual
+ * column mapping.
+ */
+export function positionsToCsv(positions: Position[]): string {
+  const header = [
+    "symbol",
+    "asset type",
+    "quantity",
+    "cost basis",
+    "currency",
+    "strike",
+    "expiry",
+    "right",
+    "contract multiplier",
+    "coupon rate",
+    "maturity",
+    "face value",
+    "price",
+  ];
+
+  const rows = positions.map((p) => {
+    if (isOption(p)) {
+      return [
+        p.ticker,
+        "option",
+        p.quantity,
+        p.costBasis,
+        p.currency ?? "USD",
+        p.strike,
+        p.expiry,
+        p.right,
+        p.contractMultiplier,
+        null,
+        null,
+        null,
+        null,
+      ];
+    }
+    if (isBond(p)) {
+      // Bonds are sized by face amount, so the quantity column stays empty
+      // rather than carrying a share count that does not exist.
+      return [
+        p.ticker,
+        "bond",
+        null,
+        p.costBasis,
+        p.currency,
+        null,
+        null,
+        null,
+        null,
+        p.couponRate,
+        p.maturity,
+        p.faceValue,
+        p.price,
+      ];
+    }
+    return [
+      p.ticker,
+      "stock",
+      p.quantity,
+      p.costBasis,
+      p.currency ?? "USD",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ];
+  });
+
+  return csvRows(header, rows);
+}
+
+/** Export the trade ledger, one row per transaction. */
+export function transactionsToCsv(transactions: LedgerTransaction[]): string {
+  const header = [
+    "date",
+    "symbol",
+    "side",
+    "quantity",
+    "price",
+    "fee",
+    "total value",
+  ];
+
+  const rows = transactions.map((t) => [
+    t.executedAt,
+    t.ticker,
+    t.side,
+    t.quantity,
+    t.price,
+    t.fee,
+    t.quantity * t.price + (t.side === "buy" ? t.fee : -t.fee),
+  ]);
+
+  return csvRows(header, rows);
 }

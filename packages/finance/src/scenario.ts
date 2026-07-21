@@ -14,7 +14,7 @@ import type {
   OptionPosition,
   Position,
 } from "./types.js";
-import { isOption } from "./types.js";
+import { isBond, isOption } from "./types.js";
 
 export interface Shock {
   /** Fractional move in every underlying. 0.10 = +10%. */
@@ -69,6 +69,17 @@ export function valuePosition(
   market: MarketSnapshot,
   shock: Shock = NO_SHOCK,
 ): number {
+  // A bond holds constant under every shock. The three sliders model equity and
+  // option dynamics — price, implied vol, time to expiry — and a bond's mark is
+  // not a function of an equity price shock. Keeping it flat means Scenario P&L
+  // is attributable entirely to the stock and option legs, which is what the
+  // sliders actually simulate. This also resolves before the spot lookup: no
+  // provider quotes bonds, so requiring a spot would skip the position.
+  if (isBond(position)) {
+    const fxRate = market.fxRates?.[position.currency] ?? 1;
+    return (position.faceValue * (position.price / 100)) / fxRate;
+  }
+
   const spot = market.spot[position.ticker];
   if (spot === undefined) {
     throw new Error(`No spot price for ${position.ticker}.`);

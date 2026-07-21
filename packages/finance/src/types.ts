@@ -10,6 +10,8 @@ export interface StockPosition {
   /** Signed. Negative means short. */
   quantity: number;
   costBasis: number;
+  /** ISO 4217. Absent means USD. */
+  currency?: string;
 }
 
 /**
@@ -35,9 +37,39 @@ export interface OptionPosition {
    */
   iv: number;
   ivIsEstimate: boolean;
+  /** ISO 4217. Absent means USD. */
+  currency?: string;
 }
 
-export type Position = StockPosition | OptionPosition;
+/**
+ * A bond holding. Sized by face amount rather than a share count, which is how
+ * bonds actually trade — `quantity` has no meaning here.
+ *
+ * Unlike stocks and options, a bond carries its own mark: no market-data
+ * provider in OneBook quotes bonds, so `price` is the only valuation input.
+ */
+export interface BondPosition {
+  id: string;
+  type: "bond";
+  ticker: string;
+  /** Signed: negative means short. */
+  faceValue: number;
+  /** Annual, as a decimal. 0.0425 = 4.25%. */
+  couponRate: number;
+  /** ISO date, YYYY-MM-DD. */
+  maturity: string;
+  /** Per 100 par, e.g. 96.59 — the position's own mark. */
+  price: number;
+  /** Per 100 par, at purchase. */
+  costBasis: number;
+  /**
+   * ISO 4217. Required, unlike on stocks and options: a foreign-denominated
+   * bond is the case this field exists for.
+   */
+  currency: string;
+}
+
+export type Position = StockPosition | OptionPosition | BondPosition;
 
 export interface Greeks {
   delta: number;
@@ -66,6 +98,11 @@ export interface MarketSnapshot {
   riskFreeRate: number;
   /** Valuation date, ISO YYYY-MM-DD. Drives time-to-expiry. */
   asOf: string;
+  /**
+   * Quote currency per 1 USD, e.g. `{ EUR: 0.92 }`. Divide a foreign-currency
+   * amount by the rate to get USD. Absent means treat everything as USD.
+   */
+  fxRates?: Record<string, number>;
 }
 
 export const TRADING_DAYS_PER_YEAR = 252;
@@ -79,4 +116,8 @@ export function isOption(p: Position): p is OptionPosition {
 
 export function isStock(p: Position): p is StockPosition {
   return p.type === "stock";
+}
+
+export function isBond(p: Position): p is BondPosition {
+  return p.type === "bond";
 }

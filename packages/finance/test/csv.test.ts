@@ -7,7 +7,18 @@ import {
   parseOsiSymbol,
   rowsToPositions,
 } from "../src/csv.js";
-import { isOption } from "../src/types.js";
+import type { Position } from "../src/types.js";
+import { isBond, isOption } from "../src/types.js";
+
+/**
+ * CSV import never yields a bond — bonds are the one position type sized by
+ * face amount rather than a quantity, so narrowing here keeps these assertions
+ * honest instead of widening them to `number | undefined`.
+ */
+function quantityOf(p: Position): number {
+  if (isBond(p)) throw new Error("expected a stock or option");
+  return p.quantity;
+}
 
 describe("parseCsv", () => {
   it("parses a simple grid", () => {
@@ -124,7 +135,7 @@ describe("rowsToPositions", () => {
     const p = result.positions[0];
     expect(p.type).toBe("stock");
     expect(p.ticker).toBe("AAPL");
-    expect(p.quantity).toBe(100);
+    expect(quantityOf(p)).toBe(100);
     expect(p.costBasis).toBe(150.25);
   });
 
@@ -157,12 +168,12 @@ describe("rowsToPositions", () => {
 
   it("applies a separate side column to unsigned quantities", () => {
     const result = importCsv("Symbol,Quantity,Side\nAAPL,100,Short");
-    expect(result.positions[0].quantity).toBe(-100);
+    expect(quantityOf(result.positions[0])).toBe(-100);
   });
 
   it("preserves an already-negative quantity", () => {
     const result = importCsv("Symbol,Quantity\nAAPL,-100");
-    expect(result.positions[0].quantity).toBe(-100);
+    expect(quantityOf(result.positions[0])).toBe(-100);
   });
 
   it("normalizes US date formats", () => {
@@ -176,13 +187,13 @@ describe("rowsToPositions", () => {
 
   it("strips currency formatting from numbers", () => {
     const result = importCsv('Symbol,Quantity,Cost Basis\nAAPL,"1,500","$150.25"');
-    expect(result.positions[0].quantity).toBe(1500);
+    expect(quantityOf(result.positions[0])).toBe(1500);
     expect(result.positions[0].costBasis).toBe(150.25);
   });
 
   it("reads parenthesized numbers as negative", () => {
     const result = importCsv("Symbol,Quantity\nAAPL,(100)");
-    expect(result.positions[0].quantity).toBe(-100);
+    expect(quantityOf(result.positions[0])).toBe(-100);
   });
 
   it("collects bad rows as issues without losing the good ones", () => {
@@ -224,7 +235,7 @@ describe("rowsToPositions", () => {
     };
     const result = rowsToPositions(rows, corrected);
     expect(result.positions[0].ticker).toBe("AAPL");
-    expect(result.positions[0].quantity).toBe(100);
+    expect(quantityOf(result.positions[0])).toBe(100);
   });
 
   it("uppercases tickers for consistent matching", () => {
